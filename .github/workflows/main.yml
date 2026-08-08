@@ -3,7 +3,7 @@ name: Android CI
 on:
   push:
     branches: [ "main", "master" ]
-  workflow_dispatch: # スマホから手動で再実行できるようにする設定
+  workflow_dispatch:
 
 jobs:
   build:
@@ -18,14 +18,27 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
-    - name: Grant execute permission for gradlew
-      run: cd TaikoTouchController-Android && chmod +x gradlew
-
-    - name: Build with Gradle
-      run: cd TaikoTouchController-Android && ./gradlew assembleDebug
+    - name: Find gradlew and build
+      run: |
+        # リポジトリ内から gradlew がある場所を自動で探します
+        GRADLEW_PATH=$(find . -name gradlew -print -quit)
+        if [ -z "$GRADLEW_PATH" ]; then
+          echo "エラー: gradlew がリポジトリ内に見つかりません！"
+          exit 1
+        fi
+        
+        # gradlew があるフォルダに移動します
+        PROJECT_DIR=$(dirname "$GRADLEW_PATH")
+        cd "$PROJECT_DIR"
+        echo "ビルド対象のフォルダに移動しました: $(pwd)"
+        
+        # 実行権限を与えてビルドします
+        chmod +x ./gradlew
+        ./gradlew assembleDebug
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: app-debug
-        path: TaikoTouchController-Android/app/build/outputs/apk/debug/app-debug.apk
+        # 生成されたAPKをフォルダの場所に関わらず自動で見つけて保存します
+        path: "**/build/outputs/apk/debug/*-debug.apk"
