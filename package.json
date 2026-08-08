@@ -1,0 +1,10 @@
+{
+  "name": "taiko-touch-controller-android",
+  "version": "1.0.0",
+  "description": "Taiko Touch Controller Android native port",
+  "scripts": {
+    "build": "exit 0",
+    "dev": "exit 0"
+  },
+  "dependencies": {}
+}
