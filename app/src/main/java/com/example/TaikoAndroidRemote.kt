@@ -91,69 +91,109 @@ class TaikoAndroidRemoteSender {
             Executors.newSingleThreadExecutor().execute {
                 var foundIp: String? = null
 
-                // 1. Try UDP Broadcast Discovery
-                try {
-                    val udpSocket = java.net.DatagramSocket()
-                    udpSocket.soTimeout = 600
-                    udpSocket.broadcast = true
-                    val reqMsg = "DISCOVER_TAIKO_RECEIVER".toByteArray(java.nio.charset.StandardCharsets.UTF_8)
-                    val packet = java.net.DatagramPacket(
-                        reqMsg,
-                        reqMsg.size,
-                        java.net.InetAddress.getByName("255.255.255.255"),
-                        udpDiscoveryPort
-                    )
-                    udpSocket.send(packet)
+                // 1. Priority Fast Scan for Wired/USB/Tethering known direct IPs
+                val priorityIps = listOf(
+                    "127.0.0.1",
+                    "192.168.42.129",
+                    "192.168.42.1",
+                    "192.168.43.1",
+                    "192.168.49.1",
+                    "10.0.2.2"
+                )
 
-                    val buf = ByteArray(256)
-                    val respPacket = java.net.DatagramPacket(buf, buf.size)
-                    udpSocket.receive(respPacket)
-                    val respStr = String(respPacket.data, 0, respPacket.length, java.nio.charset.StandardCharsets.UTF_8)
-                    if (respStr.startsWith("TAIKO_RECEIVER_ACK")) {
-                        foundIp = respPacket.address.hostAddress
+                val priorityPool = Executors.newFixedThreadPool(priorityIps.size)
+                val priorityFutures = priorityIps.map { ip ->
+                    priorityPool.submit<String?> {
+                        try {
+                            val s = Socket()
+                            s.connect(java.net.InetSocketAddress(ip, targetPort), 150)
+                            s.close()
+                            ip
+                        } catch (e: Exception) {
+                            null
+                        }
                     }
-                    udpSocket.close()
-                } catch (e: Exception) {
-                    Log.d("TaikoRemoteSender", "UDP broadcast scan timeout or skipped: ${e.message}")
                 }
 
-                // 2. Fast TCP Subnet Scan if UDP discovery didn't find anything
+                for (future in priorityFutures) {
+                    val ip = try { future.get() } catch (e: Exception) { null }
+                    if (ip != null) {
+                        foundIp = ip
+                        break
+                    }
+                }
+                priorityPool.shutdownNow()
+
+                // 2. Try UDP Broadcast Discovery if not found yet
+                if (foundIp == null) {
+                    try {
+                        val udpSocket = java.net.DatagramSocket()
+                        udpSocket.soTimeout = 400
+                        udpSocket.broadcast = true
+                        val reqMsg = "DISCOVER_TAIKO_RECEIVER".toByteArray(java.nio.charset.StandardCharsets.UTF_8)
+                        val packet = java.net.DatagramPacket(
+                            reqMsg,
+                            reqMsg.size,
+                            java.net.InetAddress.getByName("255.255.255.255"),
+                            udpDiscoveryPort
+                        )
+                        udpSocket.send(packet)
+
+                        val buf = ByteArray(256)
+                        val respPacket = java.net.DatagramPacket(buf, buf.size)
+                        udpSocket.receive(respPacket)
+                        val respStr = String(respPacket.data, 0, respPacket.length, java.nio.charset.StandardCharsets.UTF_8)
+                        if (respStr.startsWith("TAIKO_RECEIVER_ACK")) {
+                            foundIp = respPacket.address.hostAddress
+                        }
+                        udpSocket.close()
+                    } catch (e: Exception) {
+                        Log.d("TaikoRemoteSender", "UDP broadcast scan timeout or skipped: ${e.message}")
+                    }
+                }
+
+                // 3. Fast TCP Subnet Scan across all network interfaces
                 if (foundIp == null) {
                     val localIps = NetworkUtils.getAllLocalIpAddresses()
-                    val candidateIps = mutableSetOf("127.0.0.1")
+                    val candidateIps = LinkedHashSet<String>()
 
                     for (localIp in localIps) {
                         val parts = localIp.split(".")
                         if (parts.size == 4) {
                             val prefix = "${parts[0]}.${parts[1]}.${parts[2]}"
+                            val selfLastOctet = parts[3].toIntOrNull() ?: -1
                             for (i in 1..254) {
-                                candidateIps.add("$prefix.$i")
+                                if (i != selfLastOctet) {
+                                    candidateIps.add("$prefix.$i")
+                                }
                             }
                         }
                     }
 
-                    val pool = Executors.newFixedThreadPool(32)
-                    val futures = candidateIps.map { ip ->
-                        pool.submit<String?> {
-                            try {
-                                val s = Socket()
-                                s.connect(java.net.InetSocketAddress(ip, targetPort), 200)
-                                s.close()
-                                ip
-                            } catch (e: Exception) {
-                                null
+                    if (candidateIps.isNotEmpty()) {
+                        val pool = Executors.newFixedThreadPool(64)
+                        val futures = candidateIps.map { ip ->
+                            pool.submit<String?> {
+                                try {
+                                    val s = Socket()
+                                    s.connect(java.net.InetSocketAddress(ip, targetPort), 250)
+                                    s.close()
+                                    ip
+                                } catch (e: Exception) {
+                                    null
+                                }
                             }
                         }
-                    }
 
-                    for (future in futures) {
-                        val ip = try { future.get() } catch (e: Exception) { null }
-                        if (ip != null) {
-                            foundIp = ip
-                            break
+                        for (future in futures) {
+                            val ip = try { future.get() } catch (e: Exception) { null }
+                            if (ip != null) {
+                                foundIp = ip
+                                break
+                            }
                         }
+                        pool.shutdownNow()
                     }
-                    pool.shutdownNow()
                 }
 
                 if (foundIp != null) {
