@@ -1,0 +1,31 @@
+name: Android CI
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch: # スマホから手動で再実行できるようにする設定
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: gradle
+
+    - name: Grant execute permission for gradlew
+      run: cd TaikoTouchController-Android && chmod +x gradlew
+
+    - name: Build with Gradle
+      run: cd TaikoTouchController-Android && ./gradlew assembleDebug
+
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-debug
+        path: TaikoTouchController-Android/app/build/outputs/apk/debug/app-debug.apk
