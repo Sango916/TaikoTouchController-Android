@@ -23,10 +23,13 @@ android {
 
     signingConfigs {
         create("debugConfig") {
-            storeFile = file("${rootDir}/debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
+            val ksFile = file("${rootDir}/debug.keystore")
+            if (ksFile.exists()) {
+                storeFile = ksFile
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
         }
     }
 
@@ -39,7 +42,10 @@ android {
             )
         }
         debug {
-            signingConfig = signingConfigs.getByName("debugConfig")
+            val ksFile = file("${rootDir}/debug.keystore")
+            if (ksFile.exists()) {
+                signingConfig = signingConfigs.getByName("debugConfig")
+            }
         }
     }
 
