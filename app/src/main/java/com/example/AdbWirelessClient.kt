@@ -489,14 +489,16 @@ class AdbWirelessClient {
      * Otherwise, falls back to standard shell 'input keyevent' via persistent shell for ultra-low latency.
      */
     fun sendKeyEvent(part: String, key: String, isPressed: Boolean, groupingMs: Int = 15) {
+        sendMultiKeyEvents(listOf(part to key), isPressed, groupingMs)
+    }
+
+    /**
+     * Executes simultaneous key down / key up events for multiple keys in a single frame.
+     */
+    fun sendMultiKeyEvents(items: List<Pair<String, String>>, isPressed: Boolean, groupingMs: Int = 15) {
+        if (items.isEmpty()) return
+
         val value = if (isPressed) 1 else 0
-
-        val scanCode = if (emulationMode == "gamepad") {
-            getGamepadScanCode(part)
-        } else {
-            getKeyboardScancode(key)
-        }
-
         val deviceId = if (emulationMode == "gamepad") 1 else 2
 
         inputExecutor.execute {
@@ -505,17 +507,26 @@ class AdbWirelessClient {
             // 1. Try high-fidelity Shizuku/Root virtual hardware injection (uinput)
             if (injectionMethod == "uinput" && checkAndRegisterUinput()) {
                 try {
-                    // Send as a single JSON object prefixed by a comma and followed immediately by a newline to maintain valid JSON array streaming
-                    val injectJson = """{"id":$deviceId,"command":"inject","events":[1,$scanCode,$value,0,0,0]}"""
+                    val eventsList = mutableListOf<Int>()
+                    items.forEach { (part, key) ->
+                        val sc = if (emulationMode == "gamepad") getGamepadScanCode(part) else getKeyboardScancode(key)
+                        eventsList.add(1) // EV_KEY
+                        eventsList.add(sc)
+                        eventsList.add(value)
+                    }
+                    // SYN_REPORT
+                    eventsList.add(0)
+                    eventsList.add(0)
+                    eventsList.add(0)
+
+                    val injectJson = """{"id":$deviceId,"command":"inject","events":[${eventsList.joinToString(",")}]}"""
 
                     rootOutputStream?.write((",\n" + injectJson + "\n").toByteArray(Charsets.UTF_8))
                     rootOutputStream?.flush()
-                    Log.d("AdbWireless", "uinput injected ($emulationMode): $part -> $key (scancode $scanCode, value: $value)")
-                    TaikoLogManager.log("uinput Injected: $part -> $key (code: $scanCode, val: $value)")
+                    Log.d("AdbWireless", "uinput multi injected ($emulationMode): ${items.size} keys (value: $value)")
                     injectionSuccess = true
                 } catch (e: Exception) {
-                    Log.e("AdbWireless", "Failed to inject uinput event, resetting process", e)
-                    TaikoLogManager.log("uinput ERR: Failed to inject, resetting root proc: ${e.message}")
+                    Log.e("AdbWireless", "Failed to inject uinput multi event, resetting process", e)
                     cleanupRootProcess()
                     injectionSuccess = false
                 }
@@ -523,29 +534,53 @@ class AdbWirelessClient {
 
             // 2. Try Direct Shizuku System API Injection (if selected or if uinput failed)
             if (!injectionSuccess && (injectionMethod == "inject" || injectionMethod == "uinput")) {
-                val androidKeycodeStr = if (emulationMode == "gamepad") {
-                    getGamepadAndroidKeycode(part)
-                } else {
-                    getAndroidKeycode(key)
+                var countSuccess = 0
+                items.forEach { (part, key) ->
+                    val androidKeycodeStr = if (emulationMode == "gamepad") {
+                        getGamepadAndroidKeycode(part)
+                    } else {
+                        getAndroidKeycode(key)
+                    }
+                    val androidKeycode = androidKeycodeStr.toIntOrNull() ?: 0
+                    if (androidKeycode > 0) {
+                        if (injectEventViaShizuku(androidKeycode, isPressed)) {
+                            countSuccess++
+                        }
+                    }
                 }
-                val androidKeycode = androidKeycodeStr.toIntOrNull() ?: 0
-                if (androidKeycode > 0) {
-                    injectionSuccess = injectEventViaShizuku(androidKeycode, isPressed)
-                }
+                if (countSuccess > 0) injectionSuccess = true
             }
 
-            // 3. Fallback to standard command-line injection supporting Down and Up separately
+            // 3. Fallback to standard command-line injection
             if (!injectionSuccess) {
-                val androidKeycode = if (emulationMode == "gamepad") {
-                    getGamepadAndroidKeycode(part)
-                } else {
-                    getAndroidKeycode(key)
-                }
-                
-                if (groupingMs > 0) {
-                    queueAndroidKeycode(androidKeycode, isPressed, groupingMs)
-                } else {
-                    dispatchSingleAndroidKeycode(androidKeycode, isPressed)
+                val androidKeycodes = items.map { (part, key) ->
+                    if (emulationMode == "gamepad") {
+                        getGamepadAndroidKeycode(part)
+                    } else {
+                        getAndroidKeycode(key)
+                    }
+                }.filter { it.isNotEmpty() && it != "0" }
+
+                if (androidKeycodes.isNotEmpty()) {
+                    if (androidKeycodes.size == 1 && groupingMs > 0) {
+                        queueAndroidKeycode(androidKeycodes[0], isPressed, groupingMs)
+                    } else {
+                        val actionArg = if (isPressed) "--down" else "--up"
+                        val codesStr = androidKeycodes.joinToString(" ")
+                        val writer = getPersistentShell()
+                        if (writer != null) {
+                            try {
+                                writer.writeBytes("cmd input keyevent $actionArg $codesStr\n")
+                                writer.flush()
+                                Log.d("AdbWireless", "Persistent shell multi execution: cmd input keyevent $actionArg $codesStr")
+                            } catch (e: Exception) {
+                                cleanupPersistentShell()
+                                executeOneShotFallback(androidKeycodes, isPressed)
+                            }
+                        } else {
+                            executeOneShotFallback(androidKeycodes, isPressed)
+                        }
+                    }
                 }
             }
         }

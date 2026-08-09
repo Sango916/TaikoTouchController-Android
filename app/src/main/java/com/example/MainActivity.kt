@@ -575,14 +575,12 @@ class MainActivity : ComponentActivity() {
             "usb-wired" -> {
                 if (fromTouch && key.isNotEmpty()) {
                     tcpServer?.sendKeyEvent(key, isPressed)
-                    TaikoLogManager.log("USB-Wired Send: $part -> key=$key (pressed=$isPressed, active_clients=${tcpClientsCountState.value})")
                 }
             }
             "another_android" -> {
                 if (fromTouch && key.isNotEmpty()) {
                     if (settings.anotherAndroidRole == "sender") {
                         remoteSender?.sendKeyEvent(key, isPressed)
-                        TaikoLogManager.log("Remote Android Send: $part -> key=$key (pressed=$isPressed, status=${remoteSenderStatusState.value})")
                     } else {
                         // Receiver mode: Inject locally on this device via Shizuku
                         val emulationMode = settings.shizukuEmulationMode
@@ -645,8 +643,14 @@ class MainActivity : ComponentActivity() {
         val port = settings.anotherAndroidPort.toIntOrNull() ?: 60002
 
         remoteReceiver?.stop()
-        val receiver = TaikoAndroidRemoteReceiver { key, isPressed ->
-            runOnUiThread {
+        val receiver = TaikoAndroidRemoteReceiver { keys: List<String>, isPressed: Boolean ->
+            val settingsCur = settingsState.value
+            val emulationMode = settingsCur.shizukuEmulationMode
+            adbClient?.setEmulationMode(emulationMode)
+            adbClient?.setInjectionMethod(settingsCur.injectionMethod)
+            adbClient?.setGamepadKeyConfig(settingsCur.gamepadKeyConfig)
+
+            val items = keys.map { key ->
                 val part = when (key.uppercase()) {
                     "F" -> "leftDon"
                     "J" -> "rightDon"
@@ -654,16 +658,22 @@ class MainActivity : ComponentActivity() {
                     "K" -> "rightKat"
                     else -> "leftDon"
                 }
+                part to key
+            }
 
-                // Trigger visual highlight and sound locally
-                triggerInput(part, isPressed, fromTouch = false)
+            // Zero-latency direct background thread key injection
+            if (items.size == 1) {
+                val (part, key) = items[0]
+                adbClient?.sendKeyEvent(part, key, isPressed, settingsCur.simultaneousGroupingMs)
+            } else {
+                adbClient?.sendMultiKeyEvents(items, isPressed, settingsCur.simultaneousGroupingMs)
+            }
 
-                // Inject key locally on emulator device via Shizuku
-                val emulationMode = settings.shizukuEmulationMode
-                adbClient?.setEmulationMode(emulationMode)
-                adbClient?.setInjectionMethod(settings.injectionMethod)
-                adbClient?.setGamepadKeyConfig(settings.gamepadKeyConfig)
-                adbClient?.sendKeyEvent(part, key, isPressed, settings.simultaneousGroupingMs)
+            // Asynchronously update UI highlight state on main thread
+            runOnUiThread {
+                items.forEach { item ->
+                    updateActiveInputsState(item.first, isPressed)
+                }
             }
         }
 
@@ -826,8 +836,73 @@ class MainActivity : ComponentActivity() {
             updateActiveInputsState(part, isPressed)
         }
 
-        // 2. Map and delegate
         val activeEmulationMode = settings.activeEmulationMode
+
+        // Fast-path batch multi-key dispatch for big notes
+        if (fromTouch && inputs.isNotEmpty()) {
+            val isAllSameAction = inputs.all { it.second == inputs[0].second }
+            val actionIsPressed = inputs[0].second
+
+            if (isAllSameAction) {
+                if (settings.connectionMode == "another_android" && settings.anotherAndroidRole == "sender") {
+                    val keys = inputs.map { (part, _) ->
+                        if (activeEmulationMode == "gamepad") {
+                            when (part) {
+                                "leftKat" -> settings.gamepadKeyConfig.leftKat
+                                "leftDon" -> settings.gamepadKeyConfig.leftDon
+                                "rightDon" -> settings.gamepadKeyConfig.rightDon
+                                "rightKat" -> settings.gamepadKeyConfig.rightKat
+                                else -> ""
+                            }
+                        } else {
+                            when (part) {
+                                "leftKat" -> settings.keyConfig.leftKat
+                                "leftDon" -> settings.keyConfig.leftDon
+                                "rightDon" -> settings.keyConfig.rightDon
+                                "rightKat" -> settings.keyConfig.rightKat
+                                else -> ""
+                            }
+                        }
+                    }.filter { it.isNotEmpty() }
+
+                    if (keys.isNotEmpty()) {
+                        remoteSender?.sendMultiKeyEvents(keys, actionIsPressed)
+                        return
+                    }
+                } else if (settings.connectionMode == "shizuku" || (settings.connectionMode == "another_android" && settings.anotherAndroidRole == "receiver")) {
+                    val items = inputs.mapNotNull { (part, _) ->
+                        val keyChar = if (activeEmulationMode == "gamepad") {
+                            when (part) {
+                                "leftKat" -> settings.gamepadKeyConfig.leftKat
+                                "leftDon" -> settings.gamepadKeyConfig.leftDon
+                                "rightDon" -> settings.gamepadKeyConfig.rightDon
+                                "rightKat" -> settings.gamepadKeyConfig.rightKat
+                                else -> ""
+                            }
+                        } else {
+                            when (part) {
+                                "leftKat" -> settings.keyConfig.leftKat
+                                "leftDon" -> settings.keyConfig.leftDon
+                                "rightDon" -> settings.keyConfig.rightDon
+                                "rightKat" -> settings.keyConfig.rightKat
+                                else -> ""
+                            }
+                        }
+                        if (keyChar.isNotEmpty()) part to keyChar else null
+                    }
+                    if (items.isNotEmpty()) {
+                        val emulationMode = settings.shizukuEmulationMode
+                        adbClient?.setEmulationMode(emulationMode)
+                        adbClient?.setInjectionMethod(settings.injectionMethod)
+                        adbClient?.setGamepadKeyConfig(settings.gamepadKeyConfig)
+                        adbClient?.sendMultiKeyEvents(items, actionIsPressed, settings.simultaneousGroupingMs)
+                        return
+                    }
+                }
+            }
+        }
+
+        // 2. Map and delegate individually
         inputs.forEach { (part, isPressed) ->
             val keyChar = if (activeEmulationMode == "gamepad") {
                 when (part) {

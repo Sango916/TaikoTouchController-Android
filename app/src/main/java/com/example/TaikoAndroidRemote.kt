@@ -205,6 +205,9 @@ class TaikoAndroidRemoteSender {
         }
     }
 
+    private var outputStream: java.io.OutputStream? = null
+    private val socketLock = Any()
+
     fun connect(host: String, port: Int, listener: ConnectionListener? = null) {
         this.listener = listener
         disconnect()
@@ -224,13 +227,17 @@ class TaikoAndroidRemoteSender {
                 val s = Socket()
                 s.tcpNoDelay = true
                 s.keepAlive = true
+                s.sendBufferSize = 4096
                 s.connect(java.net.InetSocketAddress(host, port), 5000)
 
-                val w = BufferedWriter(OutputStreamWriter(s.getOutputStream(), "UTF-8"))
+                val out = s.getOutputStream()
 
-                socket = s
-                writer = w
-                isConnected = true
+                synchronized(socketLock) {
+                    socket = s
+                    outputStream = out
+                    writer = BufferedWriter(OutputStreamWriter(out, "UTF-8"))
+                    isConnected = true
+                }
 
                 _statusState.value = "connected"
                 listener?.onConnected()
@@ -248,24 +255,27 @@ class TaikoAndroidRemoteSender {
     }
 
     fun sendKeyEvent(key: String, isPressed: Boolean) {
-        if (!isConnected || writer == null) return
-        val action = if (isPressed) "DOWN" else "UP"
-        val message = "$action $key\n"
+        sendMultiKeyEvents(listOf(key), isPressed)
+    }
 
-        executor.execute {
-            try {
-                val w = writer ?: return@execute
-                synchronized(w) {
-                    w.write(message)
-                    w.flush()
-                }
-            } catch (e: Exception) {
-                Log.w("TaikoRemoteSender", "Send key error", e)
-                isConnected = false
-                _statusState.value = "error"
-                _errorMessageState.value = "送信エラー: ${e.message}"
-                TaikoLogManager.log("送信エラー: ${e.message}")
+    fun sendMultiKeyEvents(keys: List<String>, isPressed: Boolean) {
+        if (!isConnected || keys.isEmpty()) return
+        val action = if (isPressed) "DOWN" else "UP"
+        val message = "$action ${keys.joinToString(" ")}\n"
+        val bytes = message.toByteArray(Charsets.UTF_8)
+
+        try {
+            synchronized(socketLock) {
+                val out = outputStream ?: return
+                out.write(bytes)
+                out.flush()
             }
+        } catch (e: Exception) {
+            Log.w("TaikoRemoteSender", "Send key error", e)
+            isConnected = false
+            _statusState.value = "error"
+            _errorMessageState.value = "送信エラー: ${e.message}"
+            TaikoLogManager.log("送信エラー: ${e.message}")
         }
     }
 
@@ -274,11 +284,14 @@ class TaikoAndroidRemoteSender {
             listener?.onDisconnected()
         }
         isConnected = false
-        try {
-            socket?.close()
-        } catch (e: Exception) {}
-        socket = null
-        writer = null
+        synchronized(socketLock) {
+            try {
+                socket?.close()
+            } catch (e: Exception) {}
+            socket = null
+            writer = null
+            outputStream = null
+        }
         _statusState.value = "disconnected"
     }
 }
@@ -287,7 +300,7 @@ class TaikoAndroidRemoteSender {
  * 受信側（ゲーム側）で送信側（太鼓側）からのキー入力を待ち受け、Shizuku経由で注入するサーバー
  */
 class TaikoAndroidRemoteReceiver(
-    private val onKeyEventReceived: (key: String, isPressed: Boolean) -> Unit
+    private val onKeyEventsReceived: (keys: List<String>, isPressed: Boolean) -> Unit
 ) {
     private var serverSocket: ServerSocket? = null
     private var udpSocket: java.net.DatagramSocket? = null
@@ -383,12 +396,14 @@ class TaikoAndroidRemoteReceiver(
                 val trimmed = line.trim()
                 if (trimmed.isEmpty() || trimmed == "PING") continue
 
-                val parts = trimmed.split(" ")
+                val parts = trimmed.split("\\s+".toRegex())
                 if (parts.size >= 2) {
                     val action = parts[0] // "DOWN" or "UP"
-                    val key = parts[1]    // e.g. "F", "J", "D", "K"
                     val isPressed = action.equals("DOWN", ignoreCase = true)
-                    onKeyEventReceived(key, isPressed)
+                    val keys = parts.subList(1, parts.size)
+                    if (keys.isNotEmpty()) {
+                        onKeyEventsReceived(keys, isPressed)
+                    }
                 }
             }
         } catch (e: Exception) {
