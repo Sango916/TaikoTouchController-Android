@@ -12,7 +12,7 @@ android {
         applicationId = "com.aistudio.taikocontroller.fptwq"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
+        versionCode = project.findProperty("versionCode")?.toString()?.toIntOrNull() ?: 1
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

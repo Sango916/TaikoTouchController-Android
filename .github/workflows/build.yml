@@ -34,7 +34,7 @@ jobs:
           fi
 
       - name: Build Debug APK
-        run: gradle assembleDebug
+        run: gradle assembleDebug -PversionCode=${{ github.run_number }}
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
