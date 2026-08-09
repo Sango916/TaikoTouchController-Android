@@ -22,7 +22,7 @@ android {
     }
 
     signingConfigs {
-        create("debugConfig") {
+        getByName("debug") {
             val ksFile = file("${rootDir}/debug.keystore")
             if (ksFile.exists()) {
                 storeFile = ksFile
@@ -42,10 +42,7 @@ android {
             )
         }
         debug {
-            val ksFile = file("${rootDir}/debug.keystore")
-            if (ksFile.exists()) {
-                signingConfig = signingConfigs.getByName("debugConfig")
-            }
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
