@@ -14,6 +14,7 @@ class TaikoTcpServer(
     private var serverSocket: ServerSocket? = null
     private val clients = ConcurrentHashMap<Socket, BufferedWriter>()
     private var executor = Executors.newCachedThreadPool()
+    private var sendExecutor = Executors.newSingleThreadExecutor()
     @Volatile private var isRunning = false
 
     fun start(port: Int = 60001) {
@@ -22,6 +23,9 @@ class TaikoTcpServer(
         
         if (executor.isShutdown || executor.isTerminated) {
             executor = Executors.newCachedThreadPool()
+        }
+        if (sendExecutor.isShutdown || sendExecutor.isTerminated) {
+            sendExecutor = Executors.newSingleThreadExecutor()
         }
 
         executor.execute {
@@ -93,11 +97,15 @@ class TaikoTcpServer(
     }
 
     fun sendKeyEvent(key: String, isPressed: Boolean) {
-        if (clients.isEmpty() || executor.isShutdown) return
+        sendMultiKeyEvents(listOf(key), isPressed)
+    }
+
+    fun sendMultiKeyEvents(keys: List<String>, isPressed: Boolean) {
+        if (clients.isEmpty() || keys.isEmpty() || sendExecutor.isShutdown) return
         val action = if (isPressed) "DOWN" else "UP"
-        val message = "$action $key\n"
-        
-        executor.execute {
+        val message = "$action ${keys.joinToString(" ")}\n"
+
+        sendExecutor.execute {
             val iterator = clients.entries.iterator()
             while (iterator.hasNext()) {
                 val entry = iterator.next()
@@ -139,6 +147,7 @@ class TaikoTcpServer(
 
         try {
             executor.shutdownNow()
+            sendExecutor.shutdownNow()
         } catch (e: Exception) {}
 
         Log.d("TaikoTcpServer", "Server stopped")

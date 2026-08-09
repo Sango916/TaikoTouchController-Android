@@ -254,8 +254,8 @@ class TaikoAndroidRemoteSender {
         }
     }
 
-    fun sendKeyEvent(key: String, isPressed: Boolean) {
-        sendMultiKeyEvents(listOf(key), isPressed)
+    fun sendKeyEvent(partOrKey: String, isPressed: Boolean) {
+        sendMultiKeyEvents(listOf(partOrKey), isPressed)
     }
 
     fun sendMultiKeyEvents(keys: List<String>, isPressed: Boolean) {

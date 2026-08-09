@@ -580,7 +580,7 @@ class MainActivity : ComponentActivity() {
             "another_android" -> {
                 if (fromTouch && key.isNotEmpty()) {
                     if (settings.anotherAndroidRole == "sender") {
-                        remoteSender?.sendKeyEvent(key, isPressed)
+                        remoteSender?.sendKeyEvent(part, isPressed)
                     } else {
                         // Receiver mode: Inject locally on this device via Shizuku
                         val emulationMode = settings.shizukuEmulationMode
@@ -657,12 +657,15 @@ class MainActivity : ComponentActivity() {
                     "J", "j" -> "rightDon"
                     "D", "d" -> "leftKat"
                     "K", "k" -> "rightKat"
-                    else -> when (rawKeyOrPart.uppercase()) {
-                        "DPAD_LEFT" -> "leftDon"
-                        "B" -> "rightDon"
-                        "L1" -> "leftKat"
-                        "R1" -> "rightKat"
-                        else -> rawKeyOrPart
+                    else -> {
+                        val keyUpper = rawKeyOrPart.uppercase()
+                        when {
+                            keyUpper == settingsCur.keyConfig.leftDon.uppercase() || keyUpper == settingsCur.gamepadKeyConfig.leftDon.uppercase() -> "leftDon"
+                            keyUpper == settingsCur.keyConfig.rightDon.uppercase() || keyUpper == settingsCur.gamepadKeyConfig.rightDon.uppercase() -> "rightDon"
+                            keyUpper == settingsCur.keyConfig.leftKat.uppercase() || keyUpper == settingsCur.gamepadKeyConfig.leftKat.uppercase() -> "leftKat"
+                            keyUpper == settingsCur.keyConfig.rightKat.uppercase() || keyUpper == settingsCur.gamepadKeyConfig.rightKat.uppercase() -> "rightKat"
+                            else -> "leftDon"
+                        }
                     }
                 }
                 val keyChar = if (emulationMode == "gamepad") {
@@ -874,6 +877,20 @@ class MainActivity : ComponentActivity() {
                     val parts = inputs.map { it.first }
                     if (parts.isNotEmpty()) {
                         remoteSender?.sendMultiKeyEvents(parts, actionIsPressed)
+                        return
+                    }
+                } else if (settings.connectionMode == "usb-wired") {
+                    val keys = inputs.map { (part, _) ->
+                        when (part) {
+                            "leftKat" -> settings.keyConfig.leftKat
+                            "leftDon" -> settings.keyConfig.leftDon
+                            "rightDon" -> settings.keyConfig.rightDon
+                            "rightKat" -> settings.keyConfig.rightKat
+                            else -> ""
+                        }
+                    }.filter { it.isNotEmpty() }
+                    if (keys.isNotEmpty()) {
+                        tcpServer?.sendMultiKeyEvents(keys, actionIsPressed)
                         return
                     }
                 } else if (settings.connectionMode == "shizuku" || (settings.connectionMode == "another_android" && settings.anotherAndroidRole == "receiver")) {
