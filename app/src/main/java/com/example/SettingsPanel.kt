@@ -216,8 +216,8 @@ fun SettingsPanel(
         CollapsibleSettingCard(
             title = "🌐 接続先設定",
             subtitle = when (settings.connectionMode) {
-                "shizuku" -> "この端末 (Shizukuダイレクト)"
-                "usb-wired" -> "PC (USB/ネットワーク)"
+                "shizuku" -> "この端末 (Shizuku)"
+                "usb-wired" -> "PC (USB)"
                 "another_android" -> "別のAndroid (${if (settings.anotherAndroidRole == "sender") "送信側" else "受信側"})"
                 else -> "なし (ローカル)"
             },

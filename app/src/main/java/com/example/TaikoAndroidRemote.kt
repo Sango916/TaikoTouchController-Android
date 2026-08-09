@@ -259,23 +259,25 @@ class TaikoAndroidRemoteSender {
     }
 
     fun sendMultiKeyEvents(keys: List<String>, isPressed: Boolean) {
-        if (!isConnected || keys.isEmpty()) return
+        if (!isConnected || keys.isEmpty() || executor.isShutdown) return
         val action = if (isPressed) "DOWN" else "UP"
         val message = "$action ${keys.joinToString(" ")}\n"
         val bytes = message.toByteArray(Charsets.UTF_8)
 
-        try {
-            synchronized(socketLock) {
-                val out = outputStream ?: return
-                out.write(bytes)
-                out.flush()
+        executor.execute {
+            try {
+                synchronized(socketLock) {
+                    val out = outputStream ?: return@execute
+                    out.write(bytes)
+                    out.flush()
+                }
+            } catch (e: Exception) {
+                Log.w("TaikoRemoteSender", "Send key error", e)
+                isConnected = false
+                _statusState.value = "error"
+                _errorMessageState.value = "送信エラー: ${e.message}"
+                TaikoLogManager.log("送信エラー: ${e.message}")
             }
-        } catch (e: Exception) {
-            Log.w("TaikoRemoteSender", "Send key error", e)
-            isConnected = false
-            _statusState.value = "error"
-            _errorMessageState.value = "送信エラー: ${e.message}"
-            TaikoLogManager.log("送信エラー: ${e.message}")
         }
     }
 

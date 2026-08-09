@@ -650,23 +650,49 @@ class MainActivity : ComponentActivity() {
             adbClient?.setInjectionMethod(settingsCur.injectionMethod)
             adbClient?.setGamepadKeyConfig(settingsCur.gamepadKeyConfig)
 
-            val items = keys.map { key ->
-                val part = when (key.uppercase()) {
-                    "F" -> "leftDon"
-                    "J" -> "rightDon"
-                    "D" -> "leftKat"
-                    "K" -> "rightKat"
-                    else -> "leftDon"
+            val items = keys.mapNotNull { rawKeyOrPart ->
+                val part = when (rawKeyOrPart) {
+                    "leftDon", "leftKat", "rightDon", "rightKat" -> rawKeyOrPart
+                    "F", "f" -> "leftDon"
+                    "J", "j" -> "rightDon"
+                    "D", "d" -> "leftKat"
+                    "K", "k" -> "rightKat"
+                    else -> when (rawKeyOrPart.uppercase()) {
+                        "DPAD_LEFT" -> "leftDon"
+                        "B" -> "rightDon"
+                        "L1" -> "leftKat"
+                        "R1" -> "rightKat"
+                        else -> rawKeyOrPart
+                    }
                 }
-                part to key
+                val keyChar = if (emulationMode == "gamepad") {
+                    when (part) {
+                        "leftKat" -> settingsCur.gamepadKeyConfig.leftKat
+                        "leftDon" -> settingsCur.gamepadKeyConfig.leftDon
+                        "rightDon" -> settingsCur.gamepadKeyConfig.rightDon
+                        "rightKat" -> settingsCur.gamepadKeyConfig.rightKat
+                        else -> ""
+                    }
+                } else {
+                    when (part) {
+                        "leftKat" -> settingsCur.keyConfig.leftKat
+                        "leftDon" -> settingsCur.keyConfig.leftDon
+                        "rightDon" -> settingsCur.keyConfig.rightDon
+                        "rightKat" -> settingsCur.keyConfig.rightKat
+                        else -> ""
+                    }
+                }
+                if (keyChar.isNotEmpty()) part to keyChar else null
             }
 
-            // Zero-latency direct background thread key injection
-            if (items.size == 1) {
-                val (part, key) = items[0]
-                adbClient?.sendKeyEvent(part, key, isPressed, settingsCur.simultaneousGroupingMs)
-            } else {
-                adbClient?.sendMultiKeyEvents(items, isPressed, settingsCur.simultaneousGroupingMs)
+            // Direct background thread key injection
+            if (items.isNotEmpty()) {
+                if (items.size == 1) {
+                    val (part, keyChar) = items[0]
+                    adbClient?.sendKeyEvent(part, keyChar, isPressed, settingsCur.simultaneousGroupingMs)
+                } else {
+                    adbClient?.sendMultiKeyEvents(items, isPressed, settingsCur.simultaneousGroupingMs)
+                }
             }
 
             // Asynchronously update UI highlight state on main thread
@@ -845,28 +871,9 @@ class MainActivity : ComponentActivity() {
 
             if (isAllSameAction) {
                 if (settings.connectionMode == "another_android" && settings.anotherAndroidRole == "sender") {
-                    val keys = inputs.map { (part, _) ->
-                        if (activeEmulationMode == "gamepad") {
-                            when (part) {
-                                "leftKat" -> settings.gamepadKeyConfig.leftKat
-                                "leftDon" -> settings.gamepadKeyConfig.leftDon
-                                "rightDon" -> settings.gamepadKeyConfig.rightDon
-                                "rightKat" -> settings.gamepadKeyConfig.rightKat
-                                else -> ""
-                            }
-                        } else {
-                            when (part) {
-                                "leftKat" -> settings.keyConfig.leftKat
-                                "leftDon" -> settings.keyConfig.leftDon
-                                "rightDon" -> settings.keyConfig.rightDon
-                                "rightKat" -> settings.keyConfig.rightKat
-                                else -> ""
-                            }
-                        }
-                    }.filter { it.isNotEmpty() }
-
-                    if (keys.isNotEmpty()) {
-                        remoteSender?.sendMultiKeyEvents(keys, actionIsPressed)
+                    val parts = inputs.map { it.first }
+                    if (parts.isNotEmpty()) {
+                        remoteSender?.sendMultiKeyEvents(parts, actionIsPressed)
                         return
                     }
                 } else if (settings.connectionMode == "shizuku" || (settings.connectionMode == "another_android" && settings.anotherAndroidRole == "receiver")) {
