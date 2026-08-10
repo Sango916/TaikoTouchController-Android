@@ -35,7 +35,7 @@ data class ControllerSettings(
     var gamepadKeyConfig: GamepadKeyConfig = GamepadKeyConfig(),
     var connectionMode: String = "shizuku", // "shizuku" (この端末), "usb-wired" (PC), "another_android" (別のAndroid), "local-demo" (なし)
     var anotherAndroidRole: String = "sender", // "sender" (送信側: 太鼓) / "receiver" (受信側: ゲーム)
-    var anotherAndroidConnectionType: String = "wireless", // "wireless" (無線 Wi-Fi/ネットワーク) / "wired" (有線 USB通信)
+    var anotherAndroidConnectionType: String = "wired", // "wired" (有線 USB通信) / "wireless" (無線 Wi-Fi/ネットワーク)
     var anotherAndroidTargetIp: String = "192.168.1.100",
     var anotherAndroidPort: String = "60001",
     var webAdbHost: String = "127.0.0.1",

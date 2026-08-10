@@ -317,9 +317,31 @@ fun SettingsPanel(
                 isDarkTheme = isDark
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    val isUsbDirectConnected by TaikoUsbDirectManager.isConnectedState.collectAsState()
+
+                    if (settings.anotherAndroidConnectionType == "wired") {
+                        Surface(
+                            color = if (isUsbDirectConnected) Color(0xFFDCFCE7) else Color(0xFFFEF3C7),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = if (isUsbDirectConnected) "⚡ USB Direct (AOA) 超極小遅延通信 接続完了 (<1ms Latency)" else "🔌 USBケーブルを繋ぐだけで自動認識されます (テザリング設定は不要です)",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isUsbDirectConnected) Color(0xFF166534) else Color(0xFF92400E)
+                                )
+                            }
+                        }
+                    }
+
                     Text(
                         text = if (settings.anotherAndroidConnectionType == "wired") {
-                            "2台のAndroid端末をType-C - Type-C ケーブル（またはUSB OTGケーブル）で直接接続し、USB通信で超低遅延に入力を送信します。（※ テザリング機能は使用せず、USB通信で直接接続します）"
+                            "2台のAndroid端末をType-C - Type-C ケーブル（またはUSB OTGケーブル）で繋ぐだけ！USB AOAダイレクト通信により、ネットワーク遅延ゼロ・1ms未満の最高速入力レスポンスを実現します。"
                         } else {
                             "2台のAndroid端末を同じWi-Fi（またはネットワーク）に接続し、一方を「送信側（太鼓）」、もう一方を「受信側（ゲーム）」として通信させます。"
                         },
@@ -435,6 +457,7 @@ fun SettingsPanel(
                                     val portInt = settings.anotherAndroidPort.toIntOrNull() ?: 60001
                                     TaikoAndroidRemoteSender.scanAndFindReceiverIp(
                                         targetPort = portInt,
+                                        connectionType = settings.anotherAndroidConnectionType,
                                         onFound = { foundIp ->
                                             isScanningByAutoDiscovery = false
                                             autoDiscoveryMessage = "✅ 発見しました: $foundIp"

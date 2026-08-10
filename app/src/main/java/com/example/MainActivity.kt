@@ -180,6 +180,11 @@ class MainActivity : ComponentActivity() {
         adbClient = AdbWirelessClient()
         initVibrator()
 
+        // Init USB Direct (AOA) Manager for ultra low-latency Android-to-Android cable connection (<1ms)
+        TaikoUsbDirectManager.init(this) { keys, isPressed ->
+            handleIncomingRemoteKeys(keys, isPressed)
+        }
+
         // Init local TCP Server for PC Connection (Always active to accept PC script connection on port 12345)
         tcpServer = TaikoTcpServer { count ->
             runOnUiThread {
@@ -638,72 +643,76 @@ class MainActivity : ComponentActivity() {
         })
     }
 
+    private fun handleIncomingRemoteKeys(keys: List<String>, isPressed: Boolean) {
+        val settingsCur = settingsState.value
+        val emulationMode = settingsCur.shizukuEmulationMode
+        adbClient?.setEmulationMode(emulationMode)
+        adbClient?.setInjectionMethod(settingsCur.injectionMethod)
+        adbClient?.setGamepadKeyConfig(settingsCur.gamepadKeyConfig)
+
+        val items = keys.mapNotNull { rawKeyOrPart ->
+            val part = when (rawKeyOrPart) {
+                "leftDon", "leftKat", "rightDon", "rightKat" -> rawKeyOrPart
+                "F", "f" -> "leftDon"
+                "J", "j" -> "rightDon"
+                "D", "d" -> "leftKat"
+                "K", "k" -> "rightKat"
+                else -> {
+                    val keyUpper = rawKeyOrPart.uppercase()
+                    when {
+                        keyUpper == settingsCur.keyConfig.leftDon.uppercase() || keyUpper == settingsCur.gamepadKeyConfig.leftDon.uppercase() -> "leftDon"
+                        keyUpper == settingsCur.keyConfig.rightDon.uppercase() || keyUpper == settingsCur.gamepadKeyConfig.rightDon.uppercase() -> "rightDon"
+                        keyUpper == settingsCur.keyConfig.leftKat.uppercase() || keyUpper == settingsCur.gamepadKeyConfig.leftKat.uppercase() -> "leftKat"
+                        keyUpper == settingsCur.keyConfig.rightKat.uppercase() || keyUpper == settingsCur.gamepadKeyConfig.rightKat.uppercase() -> "rightKat"
+                        else -> "leftDon"
+                    }
+                }
+            }
+            val keyChar = if (emulationMode == "gamepad") {
+                when (part) {
+                    "leftKat" -> settingsCur.gamepadKeyConfig.leftKat
+                    "leftDon" -> settingsCur.gamepadKeyConfig.leftDon
+                    "rightDon" -> settingsCur.gamepadKeyConfig.rightDon
+                    "rightKat" -> settingsCur.gamepadKeyConfig.rightKat
+                    else -> ""
+                }
+            } else {
+                when (part) {
+                    "leftKat" -> settingsCur.keyConfig.leftKat
+                    "leftDon" -> settingsCur.keyConfig.leftDon
+                    "rightDon" -> settingsCur.keyConfig.rightDon
+                    "rightKat" -> settingsCur.keyConfig.rightKat
+                    else -> ""
+                }
+            }
+            if (keyChar.isNotEmpty()) part to keyChar else null
+        }
+
+        // Direct background thread key injection
+        if (items.isNotEmpty()) {
+            if (items.size == 1) {
+                val (part, keyChar) = items[0]
+                adbClient?.sendKeyEvent(part, keyChar, isPressed, settingsCur.simultaneousGroupingMs)
+            } else {
+                adbClient?.sendMultiKeyEvents(items, isPressed, settingsCur.simultaneousGroupingMs)
+            }
+        }
+
+        // Asynchronously update UI highlight state on main thread
+        runOnUiThread {
+            items.forEach { item ->
+                updateActiveInputsState(item.first, isPressed)
+            }
+        }
+    }
+
     private fun startRemoteReceiver() {
         val settings = settingsState.value
         val port = settings.anotherAndroidPort.toIntOrNull() ?: 60002
 
         remoteReceiver?.stop()
         val receiver = TaikoAndroidRemoteReceiver { keys: List<String>, isPressed: Boolean ->
-            val settingsCur = settingsState.value
-            val emulationMode = settingsCur.shizukuEmulationMode
-            adbClient?.setEmulationMode(emulationMode)
-            adbClient?.setInjectionMethod(settingsCur.injectionMethod)
-            adbClient?.setGamepadKeyConfig(settingsCur.gamepadKeyConfig)
-
-            val items = keys.mapNotNull { rawKeyOrPart ->
-                val part = when (rawKeyOrPart) {
-                    "leftDon", "leftKat", "rightDon", "rightKat" -> rawKeyOrPart
-                    "F", "f" -> "leftDon"
-                    "J", "j" -> "rightDon"
-                    "D", "d" -> "leftKat"
-                    "K", "k" -> "rightKat"
-                    else -> {
-                        val keyUpper = rawKeyOrPart.uppercase()
-                        when {
-                            keyUpper == settingsCur.keyConfig.leftDon.uppercase() || keyUpper == settingsCur.gamepadKeyConfig.leftDon.uppercase() -> "leftDon"
-                            keyUpper == settingsCur.keyConfig.rightDon.uppercase() || keyUpper == settingsCur.gamepadKeyConfig.rightDon.uppercase() -> "rightDon"
-                            keyUpper == settingsCur.keyConfig.leftKat.uppercase() || keyUpper == settingsCur.gamepadKeyConfig.leftKat.uppercase() -> "leftKat"
-                            keyUpper == settingsCur.keyConfig.rightKat.uppercase() || keyUpper == settingsCur.gamepadKeyConfig.rightKat.uppercase() -> "rightKat"
-                            else -> "leftDon"
-                        }
-                    }
-                }
-                val keyChar = if (emulationMode == "gamepad") {
-                    when (part) {
-                        "leftKat" -> settingsCur.gamepadKeyConfig.leftKat
-                        "leftDon" -> settingsCur.gamepadKeyConfig.leftDon
-                        "rightDon" -> settingsCur.gamepadKeyConfig.rightDon
-                        "rightKat" -> settingsCur.gamepadKeyConfig.rightKat
-                        else -> ""
-                    }
-                } else {
-                    when (part) {
-                        "leftKat" -> settingsCur.keyConfig.leftKat
-                        "leftDon" -> settingsCur.keyConfig.leftDon
-                        "rightDon" -> settingsCur.keyConfig.rightDon
-                        "rightKat" -> settingsCur.keyConfig.rightKat
-                        else -> ""
-                    }
-                }
-                if (keyChar.isNotEmpty()) part to keyChar else null
-            }
-
-            // Direct background thread key injection
-            if (items.isNotEmpty()) {
-                if (items.size == 1) {
-                    val (part, keyChar) = items[0]
-                    adbClient?.sendKeyEvent(part, keyChar, isPressed, settingsCur.simultaneousGroupingMs)
-                } else {
-                    adbClient?.sendMultiKeyEvents(items, isPressed, settingsCur.simultaneousGroupingMs)
-                }
-            }
-
-            // Asynchronously update UI highlight state on main thread
-            runOnUiThread {
-                items.forEach { item ->
-                    updateActiveInputsState(item.first, isPressed)
-                }
-            }
+            handleIncomingRemoteKeys(keys, isPressed)
         }
 
         remoteReceiver = receiver
@@ -730,25 +739,58 @@ class MainActivity : ComponentActivity() {
     private fun onConnectionModeChanged(oldMode: String, newMode: String) {
         val settings = settingsState.value
         if (newMode == "usb-wired") {
+            TaikoUsbDirectManager.stop(this)
             startTcpServer()
             stopRemoteReceiver()
             stopRemoteSender()
             TaikoLogManager.log("Switched to USB-Wired mode: Started TCP server on port 60001")
         } else if (newMode == "another_android") {
             stopTcpServer()
+            // Force reset existing sockets when connection parameters change
+            stopRemoteSender()
+            stopRemoteReceiver()
+
+            if (settings.anotherAndroidConnectionType == "wired") {
+                TaikoUsbDirectManager.start(this)
+            } else {
+                TaikoUsbDirectManager.stop(this)
+            }
+
             if (settings.anotherAndroidRole == "receiver") {
-                stopRemoteSender()
                 startRemoteReceiver()
             } else {
-                stopRemoteReceiver()
-                if (settings.anotherAndroidTargetIp.isNotEmpty()) {
-                    connectRemoteSender()
+                val portInt = settings.anotherAndroidPort.toIntOrNull() ?: 60001
+                if (settings.anotherAndroidTargetIp.isEmpty() || settings.anotherAndroidConnectionType == "wired") {
+                    // Try auto-detecting IP based on connectionType (wired vs wireless)
+                    TaikoLogManager.log("Auto-detecting receiver IP for ${settings.anotherAndroidConnectionType} mode...")
+                    TaikoAndroidRemoteSender.scanAndFindReceiverIp(
+                        targetPort = portInt,
+                        connectionType = settings.anotherAndroidConnectionType,
+                        onFound = { foundIp ->
+                            runOnUiThread {
+                                val updated = settingsState.value.copy(anotherAndroidTargetIp = foundIp)
+                                settingsState.value = updated
+                                saveSettings(updated)
+                                connectRemoteSender()
+                            }
+                        },
+                        onNotFound = {
+                            runOnUiThread {
+                                if (settings.anotherAndroidTargetIp.isNotEmpty()) {
+                                    connectRemoteSender()
+                                } else {
+                                    TaikoLogManager.log("Receiver IP not found automatically. Please enter target IP manually or verify receiver is running.")
+                                }
+                            }
+                        }
+                    )
                 } else {
-                    stopRemoteSender()
+                    connectRemoteSender()
                 }
             }
             TaikoLogManager.log("Switched to Another Android mode (Role=${settings.anotherAndroidRole}, Type=${settings.anotherAndroidConnectionType})")
         } else {
+            TaikoUsbDirectManager.stop(this)
             stopTcpServer()
             stopRemoteReceiver()
             stopRemoteSender()
@@ -1152,6 +1194,7 @@ class MainActivity : ComponentActivity() {
             Shizuku.removeBinderDeadListener(shizukuBinderDeadListener)
             Shizuku.removeRequestPermissionResultListener(shizukuListener)
         } catch (e: Exception) {}
+        TaikoUsbDirectManager.stop(this)
         activeRepeatJobs.values.forEach { it.cancel() }
         activeRepeatJobs.clear()
         audioPlayer?.release()

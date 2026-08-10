@@ -16,45 +16,51 @@ import java.util.concurrent.Executors
 
 object NetworkUtils {
     fun getLocalIpAddress(): String {
+        return getAllLocalIpAddresses().firstOrNull() ?: "127.0.0.1"
+    }
+
+    data class NetworkInterfaceIp(
+        val name: String,
+        val ip: String,
+        val isWired: Boolean
+    )
+
+    fun getDetailedLocalIpAddresses(): List<NetworkInterfaceIp> {
+        val list = mutableListOf<NetworkInterfaceIp>()
         try {
             val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
             for (intf in interfaces) {
+                if (!intf.isUp || intf.isLoopback) continue
+                val nameLower = intf.name.lowercase()
+                val isWired = nameLower.contains("rndis") || nameLower.contains("usb") ||
+                              nameLower.contains("eth") || nameLower.contains("ncm") ||
+                              nameLower.contains("tun")
                 val addrs = Collections.list(intf.inetAddresses)
                 for (addr in addrs) {
                     if (!addr.isLoopbackAddress) {
                         val sAddr = addr.hostAddress
                         if (sAddr != null && sAddr.indexOf(':') < 0) { // IPv4
-                            return sAddr
-                        }
-                    }
-                }
-            }
-        } catch (ex: Exception) {
-            Log.e("NetworkUtils", "Error getting IP address", ex)
-        }
-        return "127.0.0.1"
-    }
-
-    fun getAllLocalIpAddresses(): List<String> {
-        val list = mutableListOf<String>()
-        try {
-            val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
-            for (intf in interfaces) {
-                if (!intf.isUp || intf.isLoopback) continue
-                val addrs = Collections.list(intf.inetAddresses)
-                for (addr in addrs) {
-                    if (!addr.isLoopbackAddress) {
-                        val sAddr = addr.hostAddress
-                        if (sAddr != null && sAddr.indexOf(':') < 0) {
-                            list.add(sAddr)
+                            list.add(NetworkInterfaceIp(intf.name, sAddr, isWired))
                         }
                     }
                 }
             }
         } catch (e: Exception) {
-            Log.e("NetworkUtils", "Error getting all IP addresses", e)
+            Log.e("NetworkUtils", "Error getting detailed IP addresses", e)
         }
         return list
+    }
+
+    fun getAllLocalIpAddresses(): List<String> {
+        return getDetailedLocalIpAddresses().map { it.ip }
+    }
+
+    fun getWiredLocalIpAddresses(): List<String> {
+        return getDetailedLocalIpAddresses().filter { it.isWired }.map { it.ip }
+    }
+
+    fun getWirelessLocalIpAddresses(): List<String> {
+        return getDetailedLocalIpAddresses().filter { !it.isWired }.map { it.ip }
     }
 }
 
@@ -85,47 +91,69 @@ class TaikoAndroidRemoteSender {
         fun scanAndFindReceiverIp(
             targetPort: Int = 60001,
             udpDiscoveryPort: Int = 60002,
+            connectionType: String = "wireless", // "wired" or "wireless"
             onFound: (ip: String) -> Unit,
             onNotFound: () -> Unit
         ) {
             Executors.newSingleThreadExecutor().execute {
                 var foundIp: String? = null
 
-                // 1. Priority Fast Scan for Wired/USB/Tethering known direct IPs
-                val priorityIps = listOf(
-                    "127.0.0.1",
-                    "192.168.42.129",
-                    "192.168.42.1",
-                    "192.168.43.1",
-                    "192.168.49.1",
-                    "10.0.2.2"
-                )
+                val isWired = connectionType == "wired"
 
-                val priorityPool = Executors.newFixedThreadPool(priorityIps.size)
-                val priorityFutures = priorityIps.map { ip ->
-                    priorityPool.submit<String?> {
-                        try {
-                            val s = Socket()
-                            s.connect(java.net.InetSocketAddress(ip, targetPort), 150)
-                            s.close()
-                            ip
-                        } catch (e: Exception) {
-                            null
+                // 1. Priority Fast Scan for Wired/USB/Tethering or known direct IPs
+                val priorityIps = LinkedHashSet<String>()
+
+                if (isWired) {
+                    val wiredIps = NetworkUtils.getWiredLocalIpAddresses()
+                    for (localIp in wiredIps) {
+                        val parts = localIp.split(".")
+                        if (parts.size == 4) {
+                            val prefix = "${parts[0]}.${parts[1]}.${parts[2]}"
+                            priorityIps.add("$prefix.1")
+                            priorityIps.add("$prefix.129")
+                            priorityIps.add("$prefix.2")
+                            priorityIps.add("$prefix.100")
+                            priorityIps.add("$prefix.254")
                         }
                     }
+                    priorityIps.add("192.168.42.129")
+                    priorityIps.add("192.168.42.1")
+                    priorityIps.add("192.168.43.1")
+                    priorityIps.add("192.168.49.1")
+                    priorityIps.add("10.0.2.2")
+                    priorityIps.add("127.0.0.1")
+                } else {
+                    priorityIps.add("192.168.42.129")
+                    priorityIps.add("192.168.42.1")
                 }
 
-                for (future in priorityFutures) {
-                    val ip = try { future.get() } catch (e: Exception) { null }
-                    if (ip != null) {
-                        foundIp = ip
-                        break
+                if (priorityIps.isNotEmpty()) {
+                    val priorityPool = Executors.newFixedThreadPool(minOf(32, priorityIps.size))
+                    val priorityFutures = priorityIps.map { ip ->
+                        priorityPool.submit<String?> {
+                            try {
+                                val s = Socket()
+                                s.connect(java.net.InetSocketAddress(ip, targetPort), 150)
+                                s.close()
+                                ip
+                            } catch (e: Exception) {
+                                null
+                            }
+                        }
                     }
-                }
-                priorityPool.shutdownNow()
 
-                // 2. Try UDP Broadcast Discovery if not found yet
-                if (foundIp == null) {
+                    for (future in priorityFutures) {
+                        val ip = try { future.get() } catch (e: Exception) { null }
+                        if (ip != null) {
+                            foundIp = ip
+                            break
+                        }
+                    }
+                    priorityPool.shutdownNow()
+                }
+
+                // 2. Try UDP Broadcast Discovery if not found yet (for wireless)
+                if (foundIp == null && !isWired) {
                     try {
                         val udpSocket = java.net.DatagramSocket()
                         udpSocket.soTimeout = 400
@@ -152,9 +180,13 @@ class TaikoAndroidRemoteSender {
                     }
                 }
 
-                // 3. Fast TCP Subnet Scan across all network interfaces
+                // 3. Fast TCP Subnet Scan across relevant network interfaces
                 if (foundIp == null) {
-                    val localIps = NetworkUtils.getAllLocalIpAddresses()
+                    val localIps = if (isWired) {
+                        NetworkUtils.getWiredLocalIpAddresses().ifEmpty { NetworkUtils.getAllLocalIpAddresses() }
+                    } else {
+                        NetworkUtils.getAllLocalIpAddresses()
+                    }
                     val candidateIps = LinkedHashSet<String>()
 
                     for (localIp in localIps) {
@@ -176,7 +208,7 @@ class TaikoAndroidRemoteSender {
                             pool.submit<String?> {
                                 try {
                                     val s = Socket()
-                                    s.connect(java.net.InetSocketAddress(ip, targetPort), 250)
+                                    s.connect(java.net.InetSocketAddress(ip, targetPort), 200)
                                     s.close()
                                     ip
                                 } catch (e: Exception) {
@@ -305,7 +337,15 @@ class TaikoAndroidRemoteSender {
     }
 
     fun sendMultiKeyEvents(keys: List<String>, isPressed: Boolean) {
-        if (!isConnected || keys.isEmpty()) return
+        if (keys.isEmpty()) return
+
+        // 1. First priority: Try Direct USB AOA Transmission (<1ms Latency)
+        if (TaikoUsbDirectManager.sendKeys(keys, isPressed)) {
+            return
+        }
+
+        // 2. Fallback: TCP Socket
+        if (!isConnected) return
         if (executor.isShutdown || executor.isTerminated) {
             executor = Executors.newSingleThreadExecutor()
         }
@@ -392,6 +432,7 @@ class TaikoAndroidRemoteReceiver(
     private var udpSocket: java.net.DatagramSocket? = null
     private val clients = ConcurrentHashMap<Socket, BufferedReader>()
     private var executor = Executors.newCachedThreadPool()
+    private val keyDispatchExecutor = Executors.newSingleThreadExecutor()
     @Volatile private var isRunning = false
 
     private val _activeClientsState = MutableStateFlow(0)
@@ -489,7 +530,13 @@ class TaikoAndroidRemoteReceiver(
                     val isPressed = action.equals("DOWN", ignoreCase = true)
                     val keys = parts.subList(1, parts.size)
                     if (keys.isNotEmpty()) {
-                        onKeyEventsReceived(keys, isPressed)
+                        keyDispatchExecutor.execute {
+                            try {
+                                onKeyEventsReceived(keys, isPressed)
+                            } catch (e: Exception) {
+                                Log.e("TaikoRemoteReceiver", "Error dispatching key event", e)
+                            }
+                        }
                     }
                 }
             }
