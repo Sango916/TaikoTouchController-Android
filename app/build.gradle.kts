@@ -1,3 +1,5 @@
+import java.util.Base64
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -24,6 +26,16 @@ android {
     signingConfigs {
         getByName("debug") {
             val ksFile = file("${rootDir}/debug.keystore")
+            val b64File = file("${rootDir}/debug.keystore.base64")
+            if (!ksFile.exists() && b64File.exists()) {
+                try {
+                    val cleanB64 = b64File.readText().replace("\r", "").replace("\n", "").trim()
+                    val bytes = Base64.getDecoder().decode(cleanB64)
+                    ksFile.writeBytes(bytes)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
             if (ksFile.exists()) {
                 storeFile = ksFile
                 storePassword = "android"
@@ -36,6 +48,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
