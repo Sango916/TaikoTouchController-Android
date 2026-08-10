@@ -362,8 +362,8 @@ fun SettingsPanel(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         val connTypes = listOf(
-                            "wireless" to "無線 (Wi-Fi)",
-                            "wired" to "有線 (USB通信)"
+                            "wired" to "有線 (USB通信)",
+                            "wireless" to "無線 (Wi-Fi)"
                         )
                         connTypes.forEach { (typeVal, label) ->
                             val isSelected = settings.anotherAndroidConnectionType == typeVal
@@ -435,88 +435,12 @@ fun SettingsPanel(
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF78350F).invertIfDark(isDark)
                         )
-                        Text(
-                            text = if (settings.anotherAndroidConnectionType == "wired") {
-                                "「自動検出」を押すとUSB通信上の受信側（ゲーム）を自動検索して接続します。"
-                            } else {
-                                "「自動検出」を押すか、受信側（ゲーム）画面に表示されているIPアドレスを入力して接続してください。"
-                            },
-                            fontSize = 10.sp,
-                            color = if (isDark) Color.White else Color.Gray
-                        )
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Button(
-                                onClick = {
-                                    isScanningByAutoDiscovery = true
-                                    autoDiscoveryMessage = "🔍 ゲーム側 (受信機) を自動検出中..."
-                                    val portInt = settings.anotherAndroidPort.toIntOrNull() ?: 60001
-                                    TaikoAndroidRemoteSender.scanAndFindReceiverIp(
-                                        targetPort = portInt,
-                                        connectionType = settings.anotherAndroidConnectionType,
-                                        onFound = { foundIp ->
-                                            isScanningByAutoDiscovery = false
-                                            autoDiscoveryMessage = "✅ 発見しました: $foundIp"
-                                            onSettingsChanged(settings.copy(anotherAndroidTargetIp = foundIp))
-                                            onConnectRemoteSender()
-                                        },
-                                        onNotFound = {
-                                            isScanningByAutoDiscovery = false
-                                            autoDiscoveryMessage = "❌ 受信機が見つかりませんでした。受信側（ゲーム）でアプリを起動しているか確認してください。"
-                                        }
-                                    )
-                                },
-                                enabled = !isScanningByAutoDiscovery,
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFFD97706).invertIfDark(isDark),
-                                    contentColor = Color.White
-                                ),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    if (isScanningByAutoDiscovery) "🔍 探索中..." else "🔍 受信機 (ゲーム) を自動検出して接続",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-
-                        if (autoDiscoveryMessage != null) {
+                        if (settings.anotherAndroidConnectionType == "wireless") {
                             Text(
-                                text = autoDiscoveryMessage ?: "",
+                                text = "「自動検出」を押すか、受信側（ゲーム）画面に表示されているIPアドレスを入力して接続してください。",
                                 fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (autoDiscoveryMessage?.startsWith("✅") == true) Color(0xFF059669) else Color(0xFFD97706)
-                            )
-                        }
-
-                        // Toggle for Manual Connection Settings
-                        TextButton(
-                            onClick = { showManualInput = !showManualInput },
-                            modifier = Modifier.padding(top = 4.dp)
-                        ) {
-                            Text(
-                                text = if (showManualInput) "⚙️ 手動設定 (IP/ポート指定) を隠す ▴" else "⚙️ 手動設定 (IP/ポート指定) を表示 ▾",
-                                fontSize = 11.sp,
-                                color = Color(0xFF78350F).invertIfDark(isDark),
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-
-                        if (showManualInput) {
-                            OutlinedTextField(
-                                value = settings.anotherAndroidTargetIp,
-                                onValueChange = { onSettingsChanged(settings.copy(anotherAndroidTargetIp = it)) },
-                                label = { Text("受信側 (ゲーム) AndroidのIPアドレス") },
-                                placeholder = { Text("192.168.1.100 または 127.0.0.1") },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = customTextFieldColors(isDark)
+                                color = if (isDark) Color.White else Color.Gray
                             )
 
                             Row(
@@ -524,139 +448,227 @@ fun SettingsPanel(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                Button(
+                                    onClick = {
+                                        isScanningByAutoDiscovery = true
+                                        autoDiscoveryMessage = "🔍 ゲーム側 (受信機) を自動検出中..."
+                                        val portInt = settings.anotherAndroidPort.toIntOrNull() ?: 60001
+                                        TaikoAndroidRemoteSender.scanAndFindReceiverIp(
+                                            targetPort = portInt,
+                                            connectionType = settings.anotherAndroidConnectionType,
+                                            onFound = { foundIp ->
+                                                isScanningByAutoDiscovery = false
+                                                autoDiscoveryMessage = "✅ 発見しました: $foundIp"
+                                                onSettingsChanged(settings.copy(anotherAndroidTargetIp = foundIp))
+                                                onConnectRemoteSender()
+                                            },
+                                            onNotFound = {
+                                                isScanningByAutoDiscovery = false
+                                                autoDiscoveryMessage = "❌ 受信機が見つかりませんでした。受信側（ゲーム）でアプリを起動しているか確認してください。"
+                                            }
+                                        )
+                                    },
+                                    enabled = !isScanningByAutoDiscovery,
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFFD97706).invertIfDark(isDark),
+                                        contentColor = Color.White
+                                    ),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        if (isScanningByAutoDiscovery) "🔍 探索中..." else "🔍 受信機 (ゲーム) を自動検出して接続",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
+                            if (autoDiscoveryMessage != null) {
+                                Text(
+                                    text = autoDiscoveryMessage ?: "",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (autoDiscoveryMessage?.startsWith("✅") == true) Color(0xFF059669) else Color(0xFFD97706)
+                                )
+                            }
+
+                            // Toggle for Manual Connection Settings
+                            TextButton(
+                                onClick = { showManualInput = !showManualInput },
+                                modifier = Modifier.padding(top = 4.dp)
+                            ) {
+                                Text(
+                                    text = if (showManualInput) "⚙️ 手動設定 (IP/ポート指定) を隠す ▴" else "⚙️ 手動設定 (IP/ポート指定) を表示 ▾",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF78350F).invertIfDark(isDark),
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+
+                            if (showManualInput) {
                                 OutlinedTextField(
-                                    value = settings.anotherAndroidPort,
-                                    onValueChange = { onSettingsChanged(settings.copy(anotherAndroidPort = it)) },
-                                    label = { Text("ポート番号") },
+                                    value = settings.anotherAndroidTargetIp,
+                                    onValueChange = { onSettingsChanged(settings.copy(anotherAndroidTargetIp = it)) },
+                                    label = { Text("受信側 (ゲーム) AndroidのIPアドレス") },
+                                    placeholder = { Text("192.168.1.100 または 127.0.0.1") },
                                     singleLine = true,
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.weight(1f),
+                                    modifier = Modifier.fillMaxWidth(),
                                     colors = customTextFieldColors(isDark)
                                 )
 
-                                Button(
-                                    onClick = onConnectRemoteSender,
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF78350F).invertIfDark(isDark)),
-                                    modifier = Modifier.height(52.dp)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("接続", color = Color.White, fontWeight = FontWeight.Bold)
+                                    OutlinedTextField(
+                                        value = settings.anotherAndroidPort,
+                                        onValueChange = { onSettingsChanged(settings.copy(anotherAndroidPort = it)) },
+                                        label = { Text("ポート番号") },
+                                        singleLine = true,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        modifier = Modifier.weight(1f),
+                                        colors = customTextFieldColors(isDark)
+                                    )
+
+                                    Button(
+                                        onClick = onConnectRemoteSender,
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF78350F).invertIfDark(isDark)),
+                                        modifier = Modifier.height(52.dp)
+                                    ) {
+                                        Text("接続", color = Color.White, fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
-                        }
 
-                        // Status Banner
-                        val statusText = when (remoteSenderStatus) {
-                            "connected" -> "接続完了: 受信側 (ゲーム) へ入力を送信可能です"
-                            "connecting" -> "接続試行中..."
-                            "error" -> "接続エラー: 受信側IP・ポート番号を確認してください"
-                            else -> "未接続"
-                        }
-                        val statusBg = when (remoteSenderStatus) {
-                            "connected" -> if (isDark) Color(0xFF064E3B) else Color(0xFFD1FAE5)
-                            "connecting" -> if (isDark) Color(0xFF78350F) else Color(0xFFFEF3C7)
-                            "error" -> if (isDark) Color(0xFF7F1D1D) else Color(0xFFFEE2E2)
-                            else -> if (isDark) Color(0xFF374151) else Color(0xFFF3F4F6)
-                        }
-                        val statusTextColor = when (remoteSenderStatus) {
-                            "connected" -> if (isDark) Color(0xFFA7F3D0) else Color(0xFF065F46)
-                            "connecting" -> if (isDark) Color(0xFFFDE68A) else Color(0xFF92400E)
-                            "error" -> if (isDark) Color(0xFFFECACA) else Color(0xFF991B1B)
-                            else -> if (isDark) Color(0xFFD1D5DB) else Color(0xFF374151)
-                        }
+                            // Status Banner
+                            val statusText = when (remoteSenderStatus) {
+                                "connected" -> "接続完了: 受信側 (ゲーム) へ入力を送信可能です"
+                                "connecting" -> "接続試行中..."
+                                "error" -> "接続エラー: 受信側IP・ポート番号を確認してください"
+                                else -> "未接続"
+                            }
+                            val statusBg = when (remoteSenderStatus) {
+                                "connected" -> if (isDark) Color(0xFF064E3B) else Color(0xFFD1FAE5)
+                                "connecting" -> if (isDark) Color(0xFF78350F) else Color(0xFFFEF3C7)
+                                "error" -> if (isDark) Color(0xFF7F1D1D) else Color(0xFFFEE2E2)
+                                else -> if (isDark) Color(0xFF374151) else Color(0xFFF3F4F6)
+                            }
+                            val statusTextColor = when (remoteSenderStatus) {
+                                "connected" -> if (isDark) Color(0xFFA7F3D0) else Color(0xFF065F46)
+                                "connecting" -> if (isDark) Color(0xFFFDE68A) else Color(0xFF92400E)
+                                "error" -> if (isDark) Color(0xFFFECACA) else Color(0xFF991B1B)
+                                else -> if (isDark) Color(0xFFD1D5DB) else Color(0xFF374151)
+                            }
 
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(statusBg)
-                                .padding(10.dp)
-                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(statusBg)
+                                    .padding(10.dp)
+                            ) {
+                                Text(
+                                    text = statusText,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = statusTextColor
+                                )
+                            }
+                        } else {
+                            // WIRED SENDER
                             Text(
-                                text = statusText,
+                                text = "USB Type-Cケーブルでゲーム側Androidと接続するだけで自動認識されます。IPアドレスの入力やポート設定は一切必要ありません。",
                                 fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = statusTextColor
+                                color = if (isDark) Color.White else Color.Gray
                             )
                         }
 
                     } else {
                         // RECEIVER
-                        val clipboardManager = LocalClipboardManager.current
-                        val localIp = remember { NetworkUtils.getLocalIpAddress() }
-
                         Text(
                             text = if (settings.anotherAndroidConnectionType == "wired") "【受信側 (ゲーム) の設定 (有線 USB通信)】" else "【受信側 (ゲーム) の設定 (無線 Wi-Fi)】",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF78350F).invertIfDark(isDark)
                         )
-                        Text(
-                            text = if (settings.anotherAndroidConnectionType == "wired") {
-                                "USBケーブルで接続した状態のこの端末のIPアドレス（または太鼓側で「自動検出」を実行）を使って接続します。"
-                            } else {
-                                "この端末のIPアドレスを太鼓側 (送信側) に入力するか、太鼓側で「自動検出」を実行してください。"
-                            },
-                            fontSize = 10.sp,
-                            color = if (isDark) Color.White else Color.Gray
-                        )
 
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF0C4A6E) else Color(0xFFFFF3E0)),
-                            border = BorderStroke(1.dp, if (isDark) Color(0xFF0284C7) else Color(0xFFFFB74D)),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                        if (settings.anotherAndroidConnectionType == "wireless") {
+                            val clipboardManager = LocalClipboardManager.current
+                            val localIp = remember { NetworkUtils.getLocalIpAddress() }
+
+                            Text(
+                                text = "この端末のIPアドレスを太鼓側 (送信側) に入力するか、太鼓側で「自動検出」を実行してください。",
+                                fontSize = 10.sp,
+                                color = if (isDark) Color.White else Color.Gray
+                            )
+
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF0C4A6E) else Color(0xFFFFF3E0)),
+                                border = BorderStroke(1.dp, if (isDark) Color(0xFF0284C7) else Color(0xFFFFB74D)),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Column {
-                                    Text(
-                                        text = "この端末のIPアドレス",
-                                        fontSize = 10.sp,
-                                        color = if (isDark) Color(0xFF7DD3FC) else Color(0xFFC2410C)
-                                    )
-                                    Text(
-                                        text = localIp,
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isDark) Color.White else Color(0xFF7C2D12)
-                                    )
-                                    Text(
-                                        text = "待受ポート: ${settings.anotherAndroidPort}",
-                                        fontSize = 10.sp,
-                                        color = if (isDark) Color(0xFFBAE6FD) else Color(0xFFEA580C)
-                                    )
-                                }
-
-                                Button(
-                                    onClick = {
-                                        clipboardManager.setText(AnnotatedString(localIp))
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0xFF0284C7) else Color(0xFFEA580C))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("IPコピー", fontSize = 10.sp, color = Color.White)
+                                    Column {
+                                        Text(
+                                            text = "この端末のIPアドレス",
+                                            fontSize = 10.sp,
+                                            color = if (isDark) Color(0xFF7DD3FC) else Color(0xFFC2410C)
+                                        )
+                                        Text(
+                                            text = localIp,
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isDark) Color.White else Color(0xFF7C2D12)
+                                        )
+                                        Text(
+                                            text = "待受ポート: ${settings.anotherAndroidPort}",
+                                            fontSize = 10.sp,
+                                            color = if (isDark) Color(0xFFBAE6FD) else Color(0xFFEA580C)
+                                        )
+                                    }
+
+                                    Button(
+                                        onClick = {
+                                            clipboardManager.setText(AnnotatedString(localIp))
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0xFF0284C7) else Color(0xFFEA580C))
+                                    ) {
+                                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("IPコピー", fontSize = 10.sp, color = Color.White)
+                                    }
                                 }
                             }
-                        }
 
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (remoteReceiverClientsCount > 0) (if (isDark) Color(0xFF064E3B) else Color(0xFFD1FAE5)) else (if (isDark) Color(0xFF374151) else Color(0xFFF3F4F6)))
-                                .padding(8.dp)
-                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (remoteReceiverClientsCount > 0) (if (isDark) Color(0xFF064E3B) else Color(0xFFD1FAE5)) else (if (isDark) Color(0xFF374151) else Color(0xFFF3F4F6)))
+                                    .padding(8.dp)
+                            ) {
+                                Text(
+                                    text = if (remoteReceiverClientsCount > 0) "接続中の送信側Android: ${remoteReceiverClientsCount}台 (入力受信待機中)" else "送信側Androidからの接続を待機中...",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (remoteReceiverClientsCount > 0) (if (isDark) Color(0xFFA7F3D0) else Color(0xFF065F46)) else (if (isDark) Color(0xFFD1D5DB) else Color(0xFF374151))
+                                )
+                            }
+                        } else {
+                            // WIRED RECEIVER
                             Text(
-                                text = if (remoteReceiverClientsCount > 0) "接続中の送信側Android: ${remoteReceiverClientsCount}台 (入力受信待機中)" else "送信側Androidからの接続を待機中...",
+                                text = "USB Type-Cケーブルで太鼓側 (送信側) Androidと繋いでアプリを起動しておくだけで受信準備完了です。IPアドレスの入力は必要ありません。",
                                 fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (remoteReceiverClientsCount > 0) (if (isDark) Color(0xFFA7F3D0) else Color(0xFF065F46)) else (if (isDark) Color(0xFFD1D5DB) else Color(0xFF374151))
+                                color = if (isDark) Color.White else Color.Gray
                             )
                         }
 

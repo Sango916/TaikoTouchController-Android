@@ -759,33 +759,12 @@ class MainActivity : ComponentActivity() {
             if (settings.anotherAndroidRole == "receiver") {
                 startRemoteReceiver()
             } else {
-                val portInt = settings.anotherAndroidPort.toIntOrNull() ?: 60001
-                if (settings.anotherAndroidTargetIp.isEmpty() || settings.anotherAndroidConnectionType == "wired") {
-                    // Try auto-detecting IP based on connectionType (wired vs wireless)
-                    TaikoLogManager.log("Auto-detecting receiver IP for ${settings.anotherAndroidConnectionType} mode...")
-                    TaikoAndroidRemoteSender.scanAndFindReceiverIp(
-                        targetPort = portInt,
-                        connectionType = settings.anotherAndroidConnectionType,
-                        onFound = { foundIp ->
-                            runOnUiThread {
-                                val updated = settingsState.value.copy(anotherAndroidTargetIp = foundIp)
-                                settingsState.value = updated
-                                saveSettings(updated)
-                                connectRemoteSender()
-                            }
-                        },
-                        onNotFound = {
-                            runOnUiThread {
-                                if (settings.anotherAndroidTargetIp.isNotEmpty()) {
-                                    connectRemoteSender()
-                                } else {
-                                    TaikoLogManager.log("Receiver IP not found automatically. Please enter target IP manually or verify receiver is running.")
-                                }
-                            }
-                        }
-                    )
-                } else {
-                    connectRemoteSender()
+                if (settings.anotherAndroidConnectionType == "wireless") {
+                    if (settings.anotherAndroidTargetIp.isNotEmpty()) {
+                        connectRemoteSender()
+                    } else {
+                        TaikoLogManager.log("無線 (Wi-Fi) モード: 受信側 (ゲーム) のIPアドレスを入力するか、「自動検出」ボタンを押してください。")
+                    }
                 }
             }
             TaikoLogManager.log("Switched to Another Android mode (Role=${settings.anotherAndroidRole}, Type=${settings.anotherAndroidConnectionType})")
@@ -1134,9 +1113,7 @@ class MainActivity : ComponentActivity() {
 
         if (oldSettings.connectionMode != newSettings.connectionMode ||
             oldSettings.anotherAndroidConnectionType != newSettings.anotherAndroidConnectionType ||
-            oldSettings.anotherAndroidRole != newSettings.anotherAndroidRole ||
-            oldSettings.anotherAndroidPort != newSettings.anotherAndroidPort ||
-            oldSettings.anotherAndroidTargetIp != newSettings.anotherAndroidTargetIp) {
+            oldSettings.anotherAndroidRole != newSettings.anotherAndroidRole) {
 
             onConnectionModeChanged(oldSettings.connectionMode, newSettings.connectionMode)
         }

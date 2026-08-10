@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.hardware.usb.UsbAccessory
-import android.hardware.usb.UsbConstants
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.os.Build
@@ -21,7 +20,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.BufferedReader
-import java.io.FileDescriptor
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStreamReader
@@ -47,6 +45,7 @@ object TaikoUsbDirectManager {
 
     @Volatile private var isRunning = false
     @Volatile private var isConnected = false
+    @Volatile private var isReceiverRegistered = false
 
     private var fileDescriptor: ParcelFileDescriptor? = null
     private var inputStream: FileInputStream? = null
@@ -66,6 +65,7 @@ object TaikoUsbDirectManager {
         this.keyCallback = onKeyReceived
     }
 
+    @Synchronized
     fun start(context: Context) {
         if (isRunning) return
         isRunning = true
@@ -79,27 +79,37 @@ object TaikoUsbDirectManager {
             addAction(ACTION_USB_PERMISSION)
         }
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                context.registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-            } else {
-                context.registerReceiver(usbReceiver, filter)
+            if (!isReceiverRegistered) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    context.registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+                } else {
+                    context.registerReceiver(usbReceiver, filter)
+                }
+                isReceiverRegistered = true
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Receiver register failed", e)
+        } catch (e: Throwable) {
+            Log.e(TAG, "Receiver register failed safely", e)
         }
 
         startPolling(context)
     }
 
+    @Synchronized
     fun stop(context: Context) {
         isRunning = false
         monitorJob?.cancel()
         readJob?.cancel()
         closeStreams()
 
-        try {
-            context.unregisterReceiver(usbReceiver)
-        } catch (_: Exception) {}
+        if (isReceiverRegistered) {
+            try {
+                context.unregisterReceiver(usbReceiver)
+            } catch (e: Throwable) {
+                Log.d(TAG, "Unregister receiver caught safely: ${e.message}")
+            } finally {
+                isReceiverRegistered = false
+            }
+        }
 
         _isConnectedState.value = false
         isConnected = false
@@ -120,50 +130,56 @@ object TaikoUsbDirectManager {
 
     @Synchronized
     private fun tryConnectUsb(context: Context) {
-        val usbManager = context.getSystemService(Context.USB_SERVICE) as? UsbManager ?: return
+        try {
+            val usbManager = context.getSystemService(Context.USB_SERVICE) as? UsbManager ?: return
 
-        // 1. Check existing AOA Accessory
-        val accessoryList = usbManager.accessoryList
-        if (!accessoryList.isNullOrEmpty()) {
-            val accessory = accessoryList[0]
-            if (!usbManager.hasPermission(accessory)) {
-                requestAccessoryPermission(context, usbManager, accessory)
+            // 1. Check existing AOA Accessory
+            val accessoryList = try { usbManager.accessoryList } catch (e: Throwable) { null }
+            if (!accessoryList.isNullOrEmpty()) {
+                val accessory = accessoryList[0]
+                val hasPerm = try { usbManager.hasPermission(accessory) } catch (e: Throwable) { false }
+                if (!hasPerm) {
+                    requestAccessoryPermission(context, usbManager, accessory)
+                    return
+                }
+                openAccessoryStream(usbManager, accessory)
                 return
             }
-            openAccessoryStream(usbManager, accessory)
-            return
-        }
 
-        // 2. Check connected USB Devices and attempt AOA Handshake
-        val deviceList = usbManager.deviceList
-        for ((_, device) in deviceList) {
-            if (isGoogleAoaDevice(device)) {
-                // Device is already in AOA mode, request permission if needed
-                if (!usbManager.hasPermission(device)) {
-                    requestDevicePermission(context, usbManager, device)
+            // 2. Check connected USB Devices and attempt AOA Handshake
+            val deviceList = try { usbManager.deviceList } catch (e: Throwable) { null }
+            if (deviceList != null) {
+                for ((_, device) in deviceList) {
+                    if (isGoogleAoaDevice(device)) {
+                        val hasPerm = try { usbManager.hasPermission(device) } catch (e: Throwable) { false }
+                        if (!hasPerm) {
+                            requestDevicePermission(context, usbManager, device)
+                        }
+                        continue
+                    }
+
+                    val hasPerm = try { usbManager.hasPermission(device) } catch (e: Throwable) { false }
+                    if (hasPerm) {
+                        initiateAoaHandshake(usbManager, device)
+                    } else {
+                        requestDevicePermission(context, usbManager, device)
+                    }
                 }
-                continue
             }
-
-            // Attempt to trigger AOA mode on connected Android device
-            if (usbManager.hasPermission(device)) {
-                initiateAoaHandshake(usbManager, device)
-            } else {
-                requestDevicePermission(context, usbManager, device)
-            }
+        } catch (e: Throwable) {
+            Log.e(TAG, "Error in tryConnectUsb safely handled", e)
         }
     }
 
     private fun isGoogleAoaDevice(device: UsbDevice): Boolean {
-        // Google AOA Vendor ID = 0x18D1, Product IDs = 0x2D00, 0x2D01, 0x2D04, 0x2D05
         return device.vendorId == 0x18D1 && (device.productId in 0x2D00..0x2D05)
     }
 
     private fun initiateAoaHandshake(usbManager: UsbManager, device: UsbDevice) {
-        val connection = usbManager.openDevice(device) ?: return
+        var connection: android.hardware.usb.UsbDeviceConnection? = null
         try {
+            connection = usbManager.openDevice(device) ?: return
             val rawBuffer = ByteArray(2)
-            // Get Protocol (Request 51)
             val protocol = connection.controlTransfer(
                 0xC0, 51, 0, 0, rawBuffer, 2, 1000
             )
@@ -179,7 +195,6 @@ object TaikoUsbDirectManager {
                 )
             }
 
-            // Send AOA String Metadata (Request 52)
             sendAoaString(0, AOA_MANUFACTURER)
             sendAoaString(1, AOA_MODEL)
             sendAoaString(2, AOA_DESCRIPTION)
@@ -187,32 +202,39 @@ object TaikoUsbDirectManager {
             sendAoaString(4, AOA_URI)
             sendAoaString(5, AOA_SERIAL)
 
-            // Start Accessory Mode (Request 53)
             connection.controlTransfer(
                 0x40, 53, 0, 0, null, 0, 1000
             )
             TaikoLogManager.log("USB AOA ハンドシェイク送信成功 (${device.deviceName}) - 接続相手をAOAモードへ起動させました")
-        } catch (e: Exception) {
-            Log.e(TAG, "AOA handshake error", e)
+        } catch (e: Throwable) {
+            Log.e(TAG, "AOA handshake error safely handled", e)
         } finally {
-            try { connection.close() } catch (_: Exception) {}
+            try { connection?.close() } catch (_: Throwable) {}
         }
     }
 
     private fun requestAccessoryPermission(context: Context, usbManager: UsbManager, accessory: UsbAccessory) {
-        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
-        val permissionIntent = PendingIntent.getBroadcast(
-            context, 0, Intent(ACTION_USB_PERMISSION), flags
-        )
-        usbManager.requestPermission(accessory, permissionIntent)
+        try {
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
+            val permissionIntent = PendingIntent.getBroadcast(
+                context, 0, Intent(ACTION_USB_PERMISSION), flags
+            )
+            usbManager.requestPermission(accessory, permissionIntent)
+        } catch (e: Throwable) {
+            Log.e(TAG, "requestAccessoryPermission error", e)
+        }
     }
 
     private fun requestDevicePermission(context: Context, usbManager: UsbManager, device: UsbDevice) {
-        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
-        val permissionIntent = PendingIntent.getBroadcast(
-            context, 0, Intent(ACTION_USB_PERMISSION), flags
-        )
-        usbManager.requestPermission(device, permissionIntent)
+        try {
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
+            val permissionIntent = PendingIntent.getBroadcast(
+                context, 0, Intent(ACTION_USB_PERMISSION), flags
+            )
+            usbManager.requestPermission(device, permissionIntent)
+        } catch (e: Throwable) {
+            Log.e(TAG, "requestDevicePermission error", e)
+        }
     }
 
     @Synchronized
@@ -236,7 +258,7 @@ object TaikoUsbDirectManager {
             TaikoLogManager.log("⚡⚡ USB Direct (AOA) 超極小遅延通信が接続されました！ (<1ms Latency) ⚡⚡")
 
             startReadingStream(inputStream!!)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(TAG, "Error opening USB accessory stream", e)
             TaikoLogManager.log("USB Direct 接続エラー: ${e.message}")
             closeStreams()
@@ -246,14 +268,13 @@ object TaikoUsbDirectManager {
     private fun startReadingStream(fis: FileInputStream) {
         readJob?.cancel()
         readJob = scope.launch {
-            val reader = BufferedReader(InputStreamReader(fis, "UTF-8"))
             try {
+                val reader = BufferedReader(InputStreamReader(fis, "UTF-8"))
                 while (isActive && isConnected) {
                     val line = reader.readLine() ?: break
                     val trimmed = line.trim()
                     if (trimmed.isEmpty()) continue
 
-                    // Format: KEY1,KEY2:DOWN or KEY1:UP
                     val parts = trimmed.split(":")
                     if (parts.size == 2) {
                         val keys = parts[0].split(",").map { it.trim() }.filter { it.isNotEmpty() }
@@ -263,7 +284,7 @@ object TaikoUsbDirectManager {
                         }
                     }
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 if (isConnected) {
                     TaikoLogManager.log("USB Direct 受信切断: ${e.message}")
                 }
@@ -284,7 +305,7 @@ object TaikoUsbDirectManager {
             w.write(payload)
             w.flush()
             true
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(TAG, "Error sending USB Direct key", e)
             closeStreams()
             false
@@ -295,10 +316,10 @@ object TaikoUsbDirectManager {
     private fun closeStreams() {
         isConnected = false
         _isConnectedState.value = false
-        try { writer?.close() } catch (_: Exception) {}
-        try { inputStream?.close() } catch (_: Exception) {}
-        try { outputStream?.close() } catch (_: Exception) {}
-        try { fileDescriptor?.close() } catch (_: Exception) {}
+        try { writer?.close() } catch (_: Throwable) {}
+        try { inputStream?.close() } catch (_: Throwable) {}
+        try { outputStream?.close() } catch (_: Throwable) {}
+        try { fileDescriptor?.close() } catch (_: Throwable) {}
         writer = null
         inputStream = null
         outputStream = null
@@ -307,29 +328,33 @@ object TaikoUsbDirectManager {
 
     private val usbReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            val action = intent.action
-            if (ACTION_USB_PERMISSION == action) {
-                synchronized(this) {
-                    val accessory: UsbAccessory? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        intent.getParcelableExtra(UsbManager.EXTRA_ACCESSORY, UsbAccessory::class.java)
-                    } else {
-                        @Suppress("DEPRECATION")
-                        intent.getParcelableExtra(UsbManager.EXTRA_ACCESSORY)
+            try {
+                val action = intent.action
+                if (ACTION_USB_PERMISSION == action) {
+                    synchronized(this) {
+                        val accessory: UsbAccessory? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            intent.getParcelableExtra(UsbManager.EXTRA_ACCESSORY, UsbAccessory::class.java)
+                        } else {
+                            @Suppress("DEPRECATION")
+                            intent.getParcelableExtra(UsbManager.EXTRA_ACCESSORY)
+                        }
+                        val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
+                        if (granted && accessory != null) {
+                            val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
+                            openAccessoryStream(usbManager, accessory)
+                        }
                     }
-                    val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
-                    if (granted && accessory != null) {
-                        val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
-                        openAccessoryStream(usbManager, accessory)
-                    }
+                } else if (UsbManager.ACTION_USB_ACCESSORY_DETACHED == action ||
+                           UsbManager.ACTION_USB_DEVICE_DETACHED == action) {
+                    TaikoLogManager.log("USB ケーブルが抜かれました")
+                    closeStreams()
+                } else if (UsbManager.ACTION_USB_ACCESSORY_ATTACHED == action ||
+                           UsbManager.ACTION_USB_DEVICE_ATTACHED == action) {
+                    TaikoLogManager.log("USB ケーブル挿入検知")
+                    tryConnectUsb(context)
                 }
-            } else if (UsbManager.ACTION_USB_ACCESSORY_DETACHED == action ||
-                       UsbManager.ACTION_USB_DEVICE_DETACHED == action) {
-                TaikoLogManager.log("USB ケーブルが抜かれました")
-                closeStreams()
-            } else if (UsbManager.ACTION_USB_ACCESSORY_ATTACHED == action ||
-                       UsbManager.ACTION_USB_DEVICE_ATTACHED == action) {
-                TaikoLogManager.log("USB ケーブル挿入検知")
-                tryConnectUsb(context)
+            } catch (e: Throwable) {
+                Log.e(TAG, "Error in usbReceiver.onReceive", e)
             }
         }
     }
