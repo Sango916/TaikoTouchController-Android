@@ -208,9 +208,23 @@ class TaikoAndroidRemoteSender {
     private var outputStream: java.io.OutputStream? = null
     private val socketLock = Any()
 
-    fun connect(host: String, port: Int, listener: ConnectionListener? = null) {
+    private var monitorThread: Thread? = null
+
+    @Volatile private var shouldAutoReconnect = false
+    private var lastHost: String = ""
+    private var lastPort: Int = 60002
+
+    fun connect(host: String, port: Int, listener: ConnectionListener?) {
+        connect(host, port, true, listener)
+    }
+
+    fun connect(host: String, port: Int, autoReconnect: Boolean = true, listener: ConnectionListener? = null) {
         this.listener = listener
-        disconnect()
+        this.lastHost = host
+        this.lastPort = port
+        this.shouldAutoReconnect = autoReconnect
+        
+        stopConnectionInternal()
 
         if (executor.isShutdown || executor.isTerminated) {
             executor = Executors.newSingleThreadExecutor()
@@ -228,9 +242,10 @@ class TaikoAndroidRemoteSender {
                 s.tcpNoDelay = true
                 s.keepAlive = true
                 s.sendBufferSize = 4096
-                s.connect(java.net.InetSocketAddress(host, port), 5000)
+                s.connect(java.net.InetSocketAddress(host, port), 4000)
 
                 val out = s.getOutputStream()
+                val inStream = s.getInputStream()
 
                 synchronized(socketLock) {
                     socket = s
@@ -242,6 +257,32 @@ class TaikoAndroidRemoteSender {
                 _statusState.value = "connected"
                 listener?.onConnected()
                 TaikoLogManager.log("受信側 (ゲーム) に接続成功！ ($host:$port)")
+
+                // Active connection monitoring thread: listens for EOF/disconnect from receiver
+                monitorThread = Thread {
+                    try {
+                        val buffer = ByteArray(128)
+                        while (isConnected && socket?.isClosed == false) {
+                            val readBytes = inStream.read(buffer)
+                            if (readBytes == -1) {
+                                // Server disconnected gracefully
+                                break
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.d("TaikoRemoteSender", "Connection monitor read ended: ${e.message}")
+                    } finally {
+                        if (isConnected) {
+                            Log.w("TaikoRemoteSender", "Detected server disconnect in monitor thread")
+                            TaikoLogManager.log("受信側 (ゲーム) との接続が切断されました")
+                            onUnexpectedDisconnect()
+                        }
+                    }
+                }.apply {
+                    isDaemon = true
+                    start()
+                }
+
             } catch (e: Exception) {
                 isConnected = false
                 _statusState.value = "error"
@@ -250,6 +291,10 @@ class TaikoAndroidRemoteSender {
                 listener?.onError(errMsg)
                 Log.e("TaikoRemoteSender", "Connection failed to $host:$port", e)
                 TaikoLogManager.log("受信側 (ゲーム) への接続に失敗: $errMsg")
+                
+                if (shouldAutoReconnect) {
+                    scheduleAutoReconnect()
+                }
             }
         }
     }
@@ -259,7 +304,10 @@ class TaikoAndroidRemoteSender {
     }
 
     fun sendMultiKeyEvents(keys: List<String>, isPressed: Boolean) {
-        if (!isConnected || keys.isEmpty() || executor.isShutdown) return
+        if (!isConnected || keys.isEmpty()) return
+        if (executor.isShutdown || executor.isTerminated) {
+            executor = Executors.newSingleThreadExecutor()
+        }
         val action = if (isPressed) "DOWN" else "UP"
         val message = "$action ${keys.joinToString(" ")}\n"
         val bytes = message.toByteArray(Charsets.UTF_8)
@@ -277,15 +325,41 @@ class TaikoAndroidRemoteSender {
                 _statusState.value = "error"
                 _errorMessageState.value = "送信エラー: ${e.message}"
                 TaikoLogManager.log("送信エラー: ${e.message}")
+                if (shouldAutoReconnect) {
+                    onUnexpectedDisconnect()
+                }
             }
         }
     }
 
-    fun disconnect() {
-        if (isConnected) {
-            listener?.onDisconnected()
+    private fun onUnexpectedDisconnect() {
+        stopConnectionInternal()
+        listener?.onDisconnected()
+        if (shouldAutoReconnect) {
+            TaikoLogManager.log("自動再接続をスケジュール中 (2秒後)...")
+            scheduleAutoReconnect()
         }
+    }
+
+    private fun scheduleAutoReconnect() {
+        if (!shouldAutoReconnect || executor.isShutdown) return
+        executor.execute {
+            try {
+                Thread.sleep(2000)
+            } catch (e: Exception) {}
+            if (shouldAutoReconnect && !isConnected) {
+                connect(lastHost, lastPort, true, listener)
+            }
+        }
+    }
+
+    private fun stopConnectionInternal() {
         isConnected = false
+        try {
+            monitorThread?.interrupt()
+            monitorThread = null
+        } catch (e: Exception) {}
+
         synchronized(socketLock) {
             try {
                 socket?.close()
@@ -295,6 +369,15 @@ class TaikoAndroidRemoteSender {
             outputStream = null
         }
         _statusState.value = "disconnected"
+    }
+
+    fun disconnect() {
+        shouldAutoReconnect = false
+        val wasConnected = isConnected
+        stopConnectionInternal()
+        if (wasConnected) {
+            listener?.onDisconnected()
+        }
     }
 }
 

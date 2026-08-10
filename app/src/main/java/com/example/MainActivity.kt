@@ -728,6 +728,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun onConnectionModeChanged(oldMode: String, newMode: String) {
+        val settings = settingsState.value
         if (newMode == "usb-wired") {
             startTcpServer()
             stopRemoteReceiver()
@@ -735,14 +736,18 @@ class MainActivity : ComponentActivity() {
             TaikoLogManager.log("Switched to USB-Wired mode: Started TCP server on port 60001")
         } else if (newMode == "another_android") {
             stopTcpServer()
-            val settings = settingsState.value
             if (settings.anotherAndroidRole == "receiver") {
                 stopRemoteSender()
                 startRemoteReceiver()
             } else {
                 stopRemoteReceiver()
+                if (settings.anotherAndroidTargetIp.isNotEmpty()) {
+                    connectRemoteSender()
+                } else {
+                    stopRemoteSender()
+                }
             }
-            TaikoLogManager.log("Switched to Another Android mode (Role=${settings.anotherAndroidRole})")
+            TaikoLogManager.log("Switched to Another Android mode (Role=${settings.anotherAndroidRole}, Type=${settings.anotherAndroidConnectionType})")
         } else {
             stopTcpServer()
             stopRemoteReceiver()
@@ -1086,13 +1091,15 @@ class MainActivity : ComponentActivity() {
         saveSettings(newSettings)
 
         if (oldSettings.connectionMode != newSettings.connectionMode ||
+            oldSettings.anotherAndroidConnectionType != newSettings.anotherAndroidConnectionType ||
             oldSettings.anotherAndroidRole != newSettings.anotherAndroidRole ||
-            oldSettings.anotherAndroidPort != newSettings.anotherAndroidPort) {
+            oldSettings.anotherAndroidPort != newSettings.anotherAndroidPort ||
+            oldSettings.anotherAndroidTargetIp != newSettings.anotherAndroidTargetIp) {
 
             onConnectionModeChanged(oldSettings.connectionMode, newSettings.connectionMode)
         }
 
-        TaikoLogManager.log("Settings updated & auto-saved: mode=${newSettings.connectionMode}, role=${newSettings.anotherAndroidRole}")
+        TaikoLogManager.log("Settings updated & auto-saved: mode=${newSettings.connectionMode}, connType=${newSettings.anotherAndroidConnectionType}, role=${newSettings.anotherAndroidRole}")
     }
 
     private fun loadPersistedSettings() {
@@ -1123,10 +1130,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        if (settingsState.value.connectionMode == "usb-wired") {
+        val settings = settingsState.value
+        if (settings.connectionMode == "usb-wired") {
             startTcpServer()
-        } else {
-            stopTcpServer()
+        } else if (settings.connectionMode == "another_android") {
+            if (settings.anotherAndroidRole == "receiver") {
+                startRemoteReceiver()
+            }
         }
     }
 
