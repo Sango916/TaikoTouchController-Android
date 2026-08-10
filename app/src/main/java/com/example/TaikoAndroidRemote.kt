@@ -240,6 +240,7 @@ class TaikoAndroidRemoteSender {
 
                 val s = Socket()
                 s.tcpNoDelay = true
+                try { s.trafficClass = 0x10 } catch (_: Exception) {}
                 s.keepAlive = true
                 s.sendBufferSize = 4096
                 s.connect(java.net.InetSocketAddress(host, port), 4000)
@@ -465,6 +466,7 @@ class TaikoAndroidRemoteReceiver(
     private fun handleSenderClient(socket: Socket) {
         try {
             socket.tcpNoDelay = true
+            try { socket.trafficClass = 0x10 } catch (_: Exception) {}
             socket.keepAlive = true
             val reader = BufferedReader(InputStreamReader(socket.getInputStream(), "UTF-8"))
 

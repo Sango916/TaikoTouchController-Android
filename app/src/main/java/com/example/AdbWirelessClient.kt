@@ -378,8 +378,10 @@ class AdbWirelessClient {
 
     private var iInputManagerInstance: Any? = null
     private var injectMethod: java.lang.reflect.Method? = null
+    @Volatile private var cachedDeviceId: Int? = null
 
     private fun findVirtualOrKeyboardDeviceId(): Int {
+        cachedDeviceId?.let { return it }
         try {
             val ids = InputDevice.getDeviceIds()
             // 1. Try to find a device with "Virtual" in the name
@@ -387,6 +389,7 @@ class AdbWirelessClient {
                 val device = InputDevice.getDevice(id) ?: continue
                 if (device.name.contains("Virtual", ignoreCase = true)) {
                     Log.d("AdbWireless", "Selected Virtual device: id=$id, name=${device.name}")
+                    cachedDeviceId = id
                     return id
                 }
             }
@@ -398,13 +401,16 @@ class AdbWirelessClient {
                 val isGamepad = (sources and InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD
                 if (isKeyboard || isGamepad) {
                     Log.d("AdbWireless", "Selected physical controller/keyboard device: id=$id, name=${device.name}")
+                    cachedDeviceId = id
                     return id
                 }
             }
         } catch (e: Exception) {
             Log.e("AdbWireless", "Error finding virtual or keyboard device ID", e)
         }
-        return android.view.KeyCharacterMap.VIRTUAL_KEYBOARD // -1
+        val fallbackId = android.view.KeyCharacterMap.VIRTUAL_KEYBOARD // -1
+        cachedDeviceId = fallbackId
+        return fallbackId
     }
 
     fun logInputDevices() {
@@ -562,8 +568,12 @@ class AdbWirelessClient {
                 }.filter { it.isNotEmpty() && it != "0" }
 
                 if (androidKeycodes.isNotEmpty()) {
-                    if (androidKeycodes.size == 1 && groupingMs > 0) {
-                        queueAndroidKeycode(androidKeycodes[0], isPressed, groupingMs)
+                    if (androidKeycodes.size == 1) {
+                        if (groupingMs > 0) {
+                            queueAndroidKeycode(androidKeycodes[0], isPressed, groupingMs)
+                        } else {
+                            dispatchSingleAndroidKeycode(androidKeycodes[0], isPressed)
+                        }
                     } else {
                         val actionArg = if (isPressed) "--down" else "--up"
                         val codesStr = androidKeycodes.joinToString(" ")

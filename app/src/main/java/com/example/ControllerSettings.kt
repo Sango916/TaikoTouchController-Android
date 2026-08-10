@@ -50,7 +50,7 @@ data class ControllerSettings(
     var usbEmulationMode: String = "keyboard",     // "keyboard", "gamepad"
     var emulationMode: String = "gamepad", // "keyboard", "gamepad" (legacy fallback)
     var injectionMethod: String = "inject", // "uinput", "inject", "keyevent"
-    var simultaneousGroupingMs: Int = 15, // 0ms (disabled) to 40ms
+    var simultaneousGroupingMs: Int = 0, // 0ms (disabled/instant) to 40ms
     var showLogConsole: Boolean = false,
     var isDarkTheme: Boolean = false,
     var themeMode: String = "light", // "system", "light", "dark"

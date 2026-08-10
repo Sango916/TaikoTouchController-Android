@@ -57,6 +57,7 @@ class TaikoTcpServer(
     private fun handleClient(socket: Socket) {
         try {
             socket.tcpNoDelay = true
+            try { socket.trafficClass = 0x10 } catch (_: Exception) {}
             socket.keepAlive = true
             val writer = BufferedWriter(OutputStreamWriter(socket.getOutputStream(), "UTF-8"))
             
