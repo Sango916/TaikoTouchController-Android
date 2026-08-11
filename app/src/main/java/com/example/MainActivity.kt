@@ -604,14 +604,8 @@ class MainActivity : ComponentActivity() {
 
     private fun connectRemoteSender() {
         val settings = settingsState.value
-        val ip = settings.anotherAndroidTargetIp.trim()
+        val isWired = settings.anotherAndroidConnectionType == "wired"
         val port = settings.anotherAndroidPort.toIntOrNull() ?: 60002
-
-        if (ip.isEmpty()) {
-            remoteSenderStatusState.value = "error"
-            TaikoLogManager.log("Remote Sender error: Target IP is empty")
-            return
-        }
 
         remoteSenderStatusState.value = "connecting"
         remoteSender?.disconnect()
@@ -619,28 +613,119 @@ class MainActivity : ComponentActivity() {
         val sender = TaikoAndroidRemoteSender()
         remoteSender = sender
 
-        sender.connect(ip, port, object : TaikoAndroidRemoteSender.ConnectionListener {
-            override fun onConnected() {
-                runOnUiThread {
-                    remoteSenderStatusState.value = "connected"
-                    TaikoLogManager.log("Remote Sender: Connected to receiver at $ip:$port")
+        if (isWired) {
+            // Collect USB Direct driver status
+            lifecycleScope.launch {
+                TaikoUsbDirectManager.isConnectedState.collect { isUsbConnected ->
+                    if (isUsbConnected && settingsState.value.anotherAndroidConnectionType == "wired") {
+                        remoteSenderStatusState.value = "connected"
+                        TaikoLogManager.log("USB 有線直接通信 (AOA / USB Direct): 接続完了! (<1ms)")
+                    }
                 }
             }
 
-            override fun onDisconnected() {
-                runOnUiThread {
-                    remoteSenderStatusState.value = "disconnected"
-                    TaikoLogManager.log("Remote Sender: Disconnected")
-                }
+            val ip = settings.anotherAndroidTargetIp.trim()
+            if (ip.isNotEmpty()) {
+                sender.connect(ip, port, object : TaikoAndroidRemoteSender.ConnectionListener {
+                    override fun onConnected() {
+                        runOnUiThread {
+                            remoteSenderStatusState.value = "connected"
+                            TaikoLogManager.log("USB 有線ネットワーク: 受信側 ($ip:$port) に接続完了")
+                        }
+                    }
+
+                    override fun onDisconnected() {
+                        runOnUiThread {
+                            if (!TaikoUsbDirectManager.isConnectedState.value) {
+                                remoteSenderStatusState.value = "disconnected"
+                            }
+                        }
+                    }
+
+                    override fun onError(error: String) {
+                        runOnUiThread {
+                            if (!TaikoUsbDirectManager.isConnectedState.value) {
+                                remoteSenderStatusState.value = "error"
+                                TaikoLogManager.log("USB 有線通信: $error")
+                            }
+                        }
+                    }
+                })
+            } else {
+                // Auto-detect IP on wired USB interfaces
+                TaikoAndroidRemoteSender.scanAndFindReceiverIp(
+                    targetPort = port,
+                    connectionType = "wired",
+                    onFound = { foundIp ->
+                        runOnUiThread {
+                            val currentSettings = settingsState.value
+                            updateAndPersistSettings(currentSettings.copy(anotherAndroidTargetIp = foundIp))
+                            sender.connect(foundIp, port, object : TaikoAndroidRemoteSender.ConnectionListener {
+                                override fun onConnected() {
+                                    runOnUiThread {
+                                        remoteSenderStatusState.value = "connected"
+                                        TaikoLogManager.log("USB 有線ネットワーク: 受信側 ($foundIp:$port) に接続完了")
+                                    }
+                                }
+                                override fun onDisconnected() {
+                                    runOnUiThread {
+                                        if (!TaikoUsbDirectManager.isConnectedState.value) {
+                                            remoteSenderStatusState.value = "disconnected"
+                                        }
+                                    }
+                                }
+                                override fun onError(error: String) {
+                                    runOnUiThread {
+                                        if (!TaikoUsbDirectManager.isConnectedState.value) {
+                                            remoteSenderStatusState.value = "error"
+                                        }
+                                    }
+                                }
+                            })
+                        }
+                    },
+                    onNotFound = {
+                        runOnUiThread {
+                            if (!TaikoUsbDirectManager.isConnectedState.value) {
+                                remoteSenderStatusState.value = "connecting"
+                                TaikoLogManager.log("USB 有線通信: AOA / USBテザリング接続の待機中...")
+                            }
+                        }
+                    }
+                )
+            }
+        } else {
+            // Wireless Wi-Fi Mode
+            val ip = settings.anotherAndroidTargetIp.trim()
+            if (ip.isEmpty()) {
+                remoteSenderStatusState.value = "error"
+                TaikoLogManager.log("無線 (Wi-Fi) モード: 受信側 (ゲーム) のIPアドレスを入力するか、「自動検出」ボタンを押してください。")
+                return
             }
 
-            override fun onError(error: String) {
-                runOnUiThread {
-                    remoteSenderStatusState.value = "error"
-                    TaikoLogManager.log("Remote Sender Error: $error")
+            sender.connect(ip, port, object : TaikoAndroidRemoteSender.ConnectionListener {
+                override fun onConnected() {
+                    runOnUiThread {
+                        remoteSenderStatusState.value = "connected"
+                        TaikoLogManager.log("Remote Sender: Connected to receiver at $ip:$port")
+                    }
                 }
-            }
-        })
+
+                override fun onDisconnected() {
+                    runOnUiThread {
+                        remoteSenderStatusState.value = "disconnected"
+                        TaikoLogManager.log("Remote Sender: Disconnected")
+                    }
+                }
+
+                override fun onError(error: String) {
+                    runOnUiThread {
+                        remoteSenderStatusState.value = "error"
+                        TaikoLogManager.log("Remote Sender Error: $error")
+                    }
+                }
+            })
+        }
     }
 
     private fun handleIncomingRemoteKeys(keys: List<String>, isPressed: Boolean) {
@@ -759,13 +844,7 @@ class MainActivity : ComponentActivity() {
             if (settings.anotherAndroidRole == "receiver") {
                 startRemoteReceiver()
             } else {
-                if (settings.anotherAndroidConnectionType == "wireless") {
-                    if (settings.anotherAndroidTargetIp.isNotEmpty()) {
-                        connectRemoteSender()
-                    } else {
-                        TaikoLogManager.log("無線 (Wi-Fi) モード: 受信側 (ゲーム) のIPアドレスを入力するか、「自動検出」ボタンを押してください。")
-                    }
-                }
+                connectRemoteSender()
             }
             TaikoLogManager.log("Switched to Another Android mode (Role=${settings.anotherAndroidRole}, Type=${settings.anotherAndroidConnectionType})")
         } else {

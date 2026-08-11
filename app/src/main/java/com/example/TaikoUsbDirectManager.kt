@@ -517,6 +517,7 @@ object TaikoUsbDirectManager {
     @Synchronized
     private fun closeStreams() {
         isConnected = false
+        isConnecting = false
         _isConnectedState.value = false
 
         // Accessory streams

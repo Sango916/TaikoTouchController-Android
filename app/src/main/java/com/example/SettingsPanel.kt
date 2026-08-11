@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
 
@@ -578,11 +579,54 @@ fun SettingsPanel(
                             }
                         } else {
                             // WIRED SENDER
+                            val context = LocalContext.current
+                            val isConnected = isUsbDirectConnected || remoteSenderStatus == "connected"
+
+                            val statusBg = if (isConnected) (if (isDark) Color(0xFF064E3B) else Color(0xFFD1FAE5)) else (if (isDark) Color(0xFF374151) else Color(0xFFF3F4F6))
+                            val statusTextColor = if (isConnected) (if (isDark) Color(0xFFA7F3D0) else Color(0xFF065F46)) else (if (isDark) Color(0xFFD1D5DB) else Color(0xFF374151))
+                            val statusText = if (isConnected) "⚡ USB 有線超低遅延通信: 接続完了 (<1ms)" else "🔌 USB ケーブル接続を待機中..."
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(statusBg)
+                                    .padding(10.dp)
+                            ) {
+                                Text(
+                                    text = statusText,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = statusTextColor
+                                )
+                            }
+
                             Text(
-                                text = "USB Type-Cケーブルでゲーム側Androidと接続するだけで自動認識されます。IPアドレスの入力やポート設定は一切必要ありません。",
+                                text = "USB Type-Cケーブルでゲーム側Androidと接続します。接続許可ダイアログが出たら「許可」を選択してください。\n※自動接続されない場合は、下のボタンからAndroidのUSB設定を開き、USB制御元を「このデバイス」に変更してください。",
                                 fontSize = 10.sp,
                                 color = if (isDark) Color.White else Color.Gray
                             )
+
+                            Button(
+                                onClick = {
+                                    try {
+                                        context.startActivity(android.content.Intent("android.settings.USB_SETTINGS"))
+                                    } catch (e: Exception) {
+                                        try {
+                                            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_WIRELESS_SETTINGS))
+                                        } catch (e2: Exception) {
+                                            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_SETTINGS))
+                                        }
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0xFF0284C7) else Color(0xFFEA580C)),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("📱 AndroidのUSB設定を開く (制御元の切替)", fontSize = 11.sp, color = Color.White)
+                            }
                         }
 
                     } else {
@@ -665,11 +709,54 @@ fun SettingsPanel(
                             }
                         } else {
                             // WIRED RECEIVER
+                            val context = LocalContext.current
+                            val isConnected = isUsbDirectConnected || remoteReceiverClientsCount > 0
+
+                            val statusBg = if (isConnected) (if (isDark) Color(0xFF064E3B) else Color(0xFFD1FAE5)) else (if (isDark) Color(0xFF374151) else Color(0xFFF3F4F6))
+                            val statusTextColor = if (isConnected) (if (isDark) Color(0xFFA7F3D0) else Color(0xFF065F46)) else (if (isDark) Color(0xFFD1D5DB) else Color(0xFF374151))
+                            val statusText = if (isConnected) "⚡ USB 有線通信: 送信側から接続中 (入力受信待機中)" else "🔌 太鼓側 (送信側) からのUSB接続を待機中..."
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(statusBg)
+                                    .padding(10.dp)
+                            ) {
+                                Text(
+                                    text = statusText,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = statusTextColor
+                                )
+                            }
+
                             Text(
-                                text = "USB Type-Cケーブルで太鼓側 (送信側) Androidと繋いでアプリを起動しておくだけで受信準備完了です。IPアドレスの入力は必要ありません。",
+                                text = "USB Type-Cケーブルで太鼓側 (送信側) Androidと繋いでおくだけで受信準備完了です。接続許可ダイアログが出たら「許可」を選択してください。",
                                 fontSize = 10.sp,
                                 color = if (isDark) Color.White else Color.Gray
                             )
+
+                            Button(
+                                onClick = {
+                                    try {
+                                        context.startActivity(android.content.Intent("android.settings.USB_SETTINGS"))
+                                    } catch (e: Exception) {
+                                        try {
+                                            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_WIRELESS_SETTINGS))
+                                        } catch (e2: Exception) {
+                                            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_SETTINGS))
+                                        }
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0xFF0284C7) else Color(0xFFEA580C)),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("📱 AndroidのUSB設定を開く", fontSize = 11.sp, color = Color.White)
+                            }
                         }
 
                         Divider(color = Color(0xFF78350F).copy(alpha = 0.10f).invertIfDark(isDark))
