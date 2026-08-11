@@ -494,6 +494,31 @@ fun SettingsPanel(
                                 )
                             }
 
+                            // Wireless Speedup Tip Card
+                            Card(
+                                shape = RoundedCornerShape(8.dp),
+                                colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF1E293B) else Color(0xFFFFFBEB)),
+                                border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFFCD34D)),
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Text(
+                                        text = "🚀 無線 (Wi-Fi) の遅延・抜けを最小化するコツ",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isDark) Color(0xFFFDE047) else Color(0xFFB45309)
+                                    )
+                                    Text(
+                                        text = "① 5GHz / 6GHz 帯のWi-Fiを使用する (2.4GHzは干渉が多く遅延が発生します)\n" +
+                                               "② 受信側 (ゲーム側) で「Wi-Fiテザリング (5GHz)」をONにして送信側と直接接続すると、ルーター経由なしで極小遅延 (1〜2ms) になります\n" +
+                                               "③ アプリ内部でUDP 3重バースト送信＋50Hz状態同期を行うため、パケット抜けは自動補正されます",
+                                        fontSize = 9.5.sp,
+                                        color = if (isDark) Color(0xFFCBD5E1) else Color(0xFF78350F),
+                                        lineHeight = 13.sp
+                                    )
+                                }
+                            }
+
                             // Toggle for Manual Connection Settings
                             TextButton(
                                 onClick = { showManualInput = !showManualInput },

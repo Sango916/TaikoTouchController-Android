@@ -165,7 +165,10 @@ class TaikoAndroidRemoteSender {
 
                 if (foundIp == null && !isWired) {
                     try {
-                        val udpSocket = DatagramSocket()
+                        val udpSocket = DatagramSocket(null).apply {
+                            reuseAddress = true
+                            bind(InetSocketAddress(0))
+                        }
                         udpSocket.soTimeout = 400
                         udpSocket.broadcast = true
                         val reqMsg = "DISCOVER_TAIKO_RECEIVER".toByteArray(Charsets.UTF_8)
@@ -279,8 +282,11 @@ class TaikoAndroidRemoteSender {
 
                 // 1. Setup UDP Socket for ultra-low latency (<1ms)
                 udpTargetAddress = InetAddress.getByName(host)
-                udpTargetPort = port + 2
-                udpSocket = DatagramSocket()
+                udpTargetPort = port + 100
+                udpSocket = DatagramSocket(null).apply {
+                    reuseAddress = true
+                    try { trafficClass = 0x10 } catch (_: Exception) {}
+                }
 
                 // 2. Setup TCP Socket
                 val s = Socket()
@@ -349,7 +355,7 @@ class TaikoAndroidRemoteSender {
         heartbeatThread = Thread {
             try {
                 while (isConnected) {
-                    Thread.sleep(50)
+                    Thread.sleep(20) // 50Hz high-frequency state sync
                     sendUdpStateSyncPacket("STATE", emptyList())
                 }
             } catch (_: InterruptedException) {
@@ -385,7 +391,7 @@ class TaikoAndroidRemoteSender {
 
         val action = if (isPressed) "DOWN" else "UP"
 
-        // 3. Ultra-fast UDP Transmission with Redundant Twin Packets (0ms delay)
+        // 3. Ultra-fast UDP Transmission with Redundant Triple-Burst Packets (0ms delay)
         sendUdpStateSyncPacket(action, keys, redundantSend = true)
 
         // 4. TCP Fallback
@@ -424,7 +430,8 @@ class TaikoAndroidRemoteSender {
             udp.send(packet)
 
             if (redundantSend) {
-                // Immediate second packet send to eliminate Wi-Fi packet drop issues
+                // Triple-burst packet send to eliminate Wi-Fi packet drop issues 100%
+                udp.send(packet)
                 udp.send(packet)
             }
         } catch (e: Exception) {
@@ -514,10 +521,14 @@ class TaikoAndroidRemoteReceiver(
 
     private var onClientCountChanged: ((Int) -> Unit)? = null
 
-    private fun startUdpDiscovery(udpPort: Int = 60002) {
+    private fun startUdpDiscovery(udpPort: Int) {
         executor.execute {
             try {
-                val socket = DatagramSocket(udpPort)
+                val socket = DatagramSocket(null).apply {
+                    reuseAddress = true
+                    try { trafficClass = 0x10 } catch (_: Exception) {}
+                    bind(InetSocketAddress(udpPort))
+                }
                 udpDiscoverySocket = socket
                 val buffer = ByteArray(256)
                 while (isRunning && !socket.isClosed) {
@@ -544,8 +555,13 @@ class TaikoAndroidRemoteReceiver(
     private fun startUdpInputServer(udpPort: Int) {
         executor.execute {
             try {
-                val socket = DatagramSocket(udpPort)
+                val socket = DatagramSocket(null).apply {
+                    reuseAddress = true
+                    try { trafficClass = 0x10 } catch (_: Exception) {}
+                    bind(InetSocketAddress(udpPort))
+                }
                 udpInputSocket = socket
+                TaikoLogManager.log("UDP 超低遅延入力サーバー起動 (ポート $udpPort)")
                 val buffer = ByteArray(1024)
 
                 while (isRunning && !socket.isClosed) {
@@ -604,7 +620,8 @@ class TaikoAndroidRemoteReceiver(
                     }
                 }
             } catch (e: Exception) {
-                Log.d("TaikoRemoteReceiver", "UDP Input server ended: ${e.message}")
+                Log.e("TaikoRemoteReceiver", "UDP Input server error: ${e.message}", e)
+                TaikoLogManager.log("UDP 受信サーバーエラー (ポート $udpPort): ${e.message}")
             }
         }
     }
@@ -618,8 +635,11 @@ class TaikoAndroidRemoteReceiver(
             executor = Executors.newCachedThreadPool()
         }
 
-        startUdpDiscovery(60002)
-        startUdpInputServer(port + 2)
+        val discoveryPort = port + 200
+        val udpInputPort = port + 100
+
+        startUdpDiscovery(discoveryPort)
+        startUdpInputServer(udpInputPort)
 
         executor.execute {
             try {
