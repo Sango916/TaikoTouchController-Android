@@ -29,7 +29,7 @@ android {
             val b64File = file("${rootDir}/debug.keystore.base64")
             if (!ksFile.exists() && b64File.exists()) {
                 try {
-                    val cleanB64 = b64File.readText().replace("\r", "").replace("\n", "").trim()
+                    val cleanB64 = b64File.readText().replace("\r", "").replace("\n", "").replace(" ", "").trim()
                     val bytes = Base64.getDecoder().decode(cleanB64)
                     ksFile.writeBytes(bytes)
                 } catch (e: Exception) {

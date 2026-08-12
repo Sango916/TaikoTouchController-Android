@@ -29,14 +29,17 @@ jobs:
         run: |
           mkdir -p ~/.android
           if [ -f debug.keystore.base64 ]; then
-            python3 -c "import base64; open('debug.keystore', 'wb').write(base64.b64decode(open('debug.keystore.base64').read().strip()))"
+            python3 -c "import base64, re; text = open('debug.keystore.base64').read(); clean = re.sub(r'[^A-Za-z0-9+/=]', '', text); open('debug.keystore', 'wb').write(base64.b64decode(clean))"
           elif [ ! -f debug.keystore ]; then
             keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
           cp debug.keystore ~/.android/debug.keystore
 
       - name: Build Debug APK
-        run: gradle assembleDebug -PversionCode=${{ github.run_number }}
+        run: |
+          RUN_NUM="${{ github.run_number }}"
+          VC=$((2000 + RUN_NUM))
+          gradle assembleDebug -PversionCode=$VC
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
