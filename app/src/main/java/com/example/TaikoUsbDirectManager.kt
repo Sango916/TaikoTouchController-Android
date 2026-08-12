@@ -159,11 +159,23 @@ object TaikoUsbDirectManager {
     private fun startPolling(context: Context) {
         monitorJob?.cancel()
         monitorJob = scope.launch {
+            var unconnectPass = 0
             while (isActive && isRunning) {
-                if (!isConnected && !isConnecting) {
-                    tryConnectUsb(context)
+                if (!isConnected) {
+                    unconnectPass++
+                    if (unconnectPass % 4 == 0) {
+                        // Reset stale requested permission IDs to allow continuous re-engagement
+                        requestedDeviceIds.clear()
+                        requestedAccessoryKeys.clear()
+                        isPermissionPending = false
+                    }
+                    if (!isConnecting) {
+                        tryConnectUsb(context)
+                    }
+                } else {
+                    unconnectPass = 0
                 }
-                delay(1000)
+                delay(1200)
             }
         }
     }

@@ -261,6 +261,8 @@ class TaikoAndroidRemoteSender {
         connect(host, port, true, listener)
     }
 
+    private var wiredJob: java.util.concurrent.Future<*>? = null
+
     fun connect(host: String, port: Int, autoReconnect: Boolean = true, listener: ConnectionListener? = null) {
         this.listener = listener
         this.lastHost = host
@@ -278,63 +280,7 @@ class TaikoAndroidRemoteSender {
 
         executor.execute {
             try {
-                Log.d("TaikoRemoteSender", "Connecting to $host:$port ...")
-                TaikoLogManager.log("受信側 (ゲーム) へ接続試行中... $host:$port")
-
-                // 1. Setup UDP Socket for ultra-low latency (<1ms)
-                udpTargetAddress = InetAddress.getByName(host)
-                udpTargetPort = port + 100
-                udpSocket = DatagramSocket(null).apply {
-                    reuseAddress = true
-                    try { trafficClass = 0x10 } catch (_: Exception) {}
-                }
-
-                // 2. Setup TCP Socket
-                val s = Socket()
-                s.tcpNoDelay = true
-                try { s.trafficClass = 0x10 } catch (_: Exception) {}
-                s.keepAlive = true
-                s.sendBufferSize = 4096
-                s.connect(InetSocketAddress(host, port), 4000)
-
-                val out = s.getOutputStream()
-                val inStream = s.getInputStream()
-
-                synchronized(socketLock) {
-                    socket = s
-                    writer = BufferedWriter(OutputStreamWriter(out, "UTF-8"))
-                    isConnected = true
-                }
-
-                _statusState.value = "connected"
-                listener?.onConnected()
-                TaikoLogManager.log("受信側 (ゲーム) に無線超低遅延UDP+TCPで接続完了！ ($host:$port)")
-
-                // 3. Start Heartbeat / State Sync loop (50ms interval)
-                startHeartbeatThread()
-
-                // 4. Connection Monitor Thread
-                monitorThread = Thread {
-                    try {
-                        val buffer = ByteArray(128)
-                        while (isConnected && socket?.isClosed == false) {
-                            val readBytes = inStream.read(buffer)
-                            if (readBytes == -1) break
-                        }
-                    } catch (e: Exception) {
-                        Log.d("TaikoRemoteSender", "Connection monitor read ended: ${e.message}")
-                    } finally {
-                        if (isConnected) {
-                            Log.w("TaikoRemoteSender", "Detected server disconnect in monitor thread")
-                            TaikoLogManager.log("受信側 (ゲーム) との接続が切断されました")
-                            onUnexpectedDisconnect()
-                        }
-                    }
-                }.apply {
-                    isDaemon = true
-                    start()
-                }
-
+                connectInternalSync(host, port, listener)
             } catch (e: Exception) {
                 isConnected = false
                 _statusState.value = "error"
@@ -351,12 +297,71 @@ class TaikoAndroidRemoteSender {
         }
     }
 
+    private fun connectInternalSync(host: String, port: Int, listener: ConnectionListener?) {
+        Log.d("TaikoRemoteSender", "Connecting sync to $host:$port ...")
+        TaikoLogManager.log("受信側 (ゲーム) へ接続試行中... $host:$port")
+
+        // 1. Setup UDP Socket for ultra-low latency (<1ms)
+        udpTargetAddress = InetAddress.getByName(host)
+        udpTargetPort = port + 100
+        udpSocket = DatagramSocket(null).apply {
+            reuseAddress = true
+            try { trafficClass = 0x10 } catch (_: Exception) {}
+        }
+
+        // 2. Setup TCP Socket
+        val s = Socket()
+        s.tcpNoDelay = true
+        try { s.trafficClass = 0x10 } catch (_: Exception) {}
+        s.keepAlive = true
+        s.sendBufferSize = 4096
+        s.connect(InetSocketAddress(host, port), 4000)
+
+        val out = s.getOutputStream()
+        val inStream = s.getInputStream()
+
+        synchronized(socketLock) {
+            socket = s
+            writer = BufferedWriter(OutputStreamWriter(out, "UTF-8"))
+            isConnected = true
+        }
+
+        _statusState.value = "connected"
+        listener?.onConnected()
+        TaikoLogManager.log("受信側 (ゲーム) に接続完了！ ($host:$port)")
+
+        // 3. Start Heartbeat / State Sync loop
+        startHeartbeatThread()
+
+        // 4. Connection Monitor Thread
+        monitorThread = Thread {
+            try {
+                val buffer = ByteArray(128)
+                while (isConnected && socket?.isClosed == false) {
+                    val readBytes = inStream.read(buffer)
+                    if (readBytes == -1) break
+                }
+            } catch (e: Exception) {
+                Log.d("TaikoRemoteSender", "Connection monitor read ended: ${e.message}")
+            } finally {
+                if (isConnected) {
+                    Log.w("TaikoRemoteSender", "Detected server disconnect in monitor thread")
+                    TaikoLogManager.log("受信側 (ゲーム) との接続が切断されました")
+                    onUnexpectedDisconnect()
+                }
+            }
+        }.apply {
+            isDaemon = true
+            start()
+        }
+    }
+
     private fun startHeartbeatThread() {
         heartbeatThread?.interrupt()
         heartbeatThread = Thread {
             try {
                 while (isConnected) {
-                    Thread.sleep(20) // 50Hz high-frequency state sync
+                    Thread.sleep(250) // Idle state sync heartbeat
                     sendUdpStateSyncPacket("STATE", emptyList())
                 }
             } catch (_: InterruptedException) {
@@ -392,29 +397,10 @@ class TaikoAndroidRemoteSender {
 
         val action = if (isPressed) "DOWN" else "UP"
 
-        // 3. Ultra-fast UDP Transmission with Redundant Triple-Burst Packets (0ms delay)
+        // 3. Ultra-fast Zero-Queue Direct UDP Transmission with Redundant Triple-Burst Packets (0ms delay)
         sendUdpStateSyncPacket(action, keys, redundantSend = true)
         if (!isPressed) {
-            // Instant state sync after key release to eliminate stuck keys on Wi-Fi
             sendUdpStateSyncPacket("STATE", emptyList(), redundantSend = true)
-        }
-
-        // 4. TCP Fallback
-        if (executor.isShutdown || executor.isTerminated) {
-            executor = Executors.newSingleThreadExecutor()
-        }
-        val tcpMessage = "$action ${keys.joinToString(" ")}\n"
-
-        executor.execute {
-            try {
-                synchronized(socketLock) {
-                    val w = writer ?: return@execute
-                    w.write(tcpMessage)
-                    w.flush()
-                }
-            } catch (e: Exception) {
-                Log.w("TaikoRemoteSender", "TCP Send key error", e)
-            }
         }
     }
 
@@ -422,20 +408,18 @@ class TaikoAndroidRemoteSender {
         val udp = udpSocket ?: return
         val addr = udpTargetAddress ?: return
 
-        if (udpSendExecutor.isShutdown || udpSendExecutor.isTerminated) {
-            udpSendExecutor = Executors.newSingleThreadExecutor()
-        }
-
         val seq = seqNumber.getAndIncrement()
         val eventKeysCsv = eventKeys.joinToString(",")
         val allKeysCsv = currentlyPressedKeys.joinToString(",")
+        val payloadStr = "$seq|$action|$eventKeysCsv|$allKeysCsv"
+        val bytes = payloadStr.toByteArray(Charsets.UTF_8)
+
+        if (udpSendExecutor.isShutdown || udpSendExecutor.isTerminated) {
+            udpSendExecutor = Executors.newCachedThreadPool()
+        }
 
         udpSendExecutor.execute {
             try {
-                // Format: SEQ|ACTION|EVENT_KEYS|ALL_PRESSED_KEYS
-                val payloadStr = "$seq|$action|$eventKeysCsv|$allKeysCsv"
-                val bytes = payloadStr.toByteArray(Charsets.UTF_8)
-
                 val packet = DatagramPacket(bytes, bytes.size, addr, udpTargetPort)
                 udp.send(packet)
 
@@ -642,19 +626,7 @@ class TaikoAndroidRemoteReceiver(
 
                         keyDispatchExecutor.execute {
                             try {
-                                // 1. Dispatch primary event
-                                if (eventKeys.isNotEmpty() && action != "STATE") {
-                                    val isPressed = action.equals("DOWN", ignoreCase = true)
-                                    onKeyEventsReceived(eventKeys, isPressed)
-
-                                    if (isPressed) {
-                                        activePressedKeysOnReceiver.addAll(eventKeys)
-                                    } else {
-                                        activePressedKeysOnReceiver.removeAll(eventKeys.toSet())
-                                    }
-                                }
-
-                                // 2. State Sync Check: resolve any dropped packets automatically
+                                // 1. State Delta Resolution: resolve any dropped or out-of-order packets
                                 val missingPressed = expectedPressedKeys - activePressedKeysOnReceiver
                                 val stuckPressed = activePressedKeysOnReceiver - expectedPressedKeys
 
@@ -665,6 +637,17 @@ class TaikoAndroidRemoteReceiver(
                                 if (stuckPressed.isNotEmpty()) {
                                     onKeyEventsReceived(stuckPressed.toList(), false)
                                     activePressedKeysOnReceiver.removeAll(stuckPressed)
+                                }
+
+                                // 2. Dispatch explicit key event (guarantees fast consecutive drum hits)
+                                if (eventKeys.isNotEmpty() && action != "STATE") {
+                                    val isPressed = action.equals("DOWN", ignoreCase = true)
+                                    onKeyEventsReceived(eventKeys, isPressed)
+                                    if (isPressed) {
+                                        activePressedKeysOnReceiver.addAll(eventKeys)
+                                    } else {
+                                        activePressedKeysOnReceiver.removeAll(eventKeys.toSet())
+                                    }
                                 }
                             } catch (e: Exception) {
                                 Log.e("TaikoRemoteReceiver", "Error dispatching UDP key event", e)
