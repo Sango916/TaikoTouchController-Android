@@ -30,10 +30,25 @@ class TaikoTcpServer(
 
         executor.execute {
             try {
-                serverSocket = ServerSocket().apply {
-                    reuseAddress = true
-                    bind(java.net.InetSocketAddress(port))
+                var sSocket: ServerSocket? = null
+                for (i in 1..10) {
+                    if (!isRunning) return@execute
+                    try {
+                        sSocket = ServerSocket().apply {
+                            reuseAddress = true
+                            bind(java.net.InetSocketAddress(port))
+                        }
+                        break
+                    } catch (e: Exception) {
+                        if (i < 10) {
+                            Log.w("TaikoTcpServer", "Port $port waiting for socket release (attempt $i/10)...")
+                            try { Thread.sleep(200) } catch (_: InterruptedException) { return@execute }
+                        } else {
+                            throw e
+                        }
+                    }
                 }
+                serverSocket = sSocket
                 Log.d("TaikoTcpServer", "Server bound successfully to port $port (dual-stack)")
                 TaikoLogManager.log("TCP Server active on port $port. Ready for PC connection!")
                 

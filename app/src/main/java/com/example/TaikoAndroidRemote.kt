@@ -87,6 +87,7 @@ class TaikoAndroidRemoteSender {
 
     private var writer: BufferedWriter? = null
     private var executor = Executors.newSingleThreadExecutor()
+    private var udpSendExecutor = Executors.newSingleThreadExecutor()
     private val seqNumber = AtomicLong(1)
 
     @Volatile private var isConnected = false
@@ -417,25 +418,29 @@ class TaikoAndroidRemoteSender {
         val udp = udpSocket ?: return
         val addr = udpTargetAddress ?: return
 
-        try {
-            val seq = seqNumber.getAndIncrement()
-            val eventKeysCsv = eventKeys.joinToString(",")
-            val allKeysCsv = currentlyPressedKeys.joinToString(",")
+        if (udpSendExecutor.isShutdown || udpSendExecutor.isTerminated) {
+            udpSendExecutor = Executors.newSingleThreadExecutor()
+        }
 
-            // Format: SEQ|ACTION|EVENT_KEYS|ALL_PRESSED_KEYS
-            val payloadStr = "$seq|$action|$eventKeysCsv|$allKeysCsv"
-            val bytes = payloadStr.toByteArray(Charsets.UTF_8)
+        val seq = seqNumber.getAndIncrement()
+        val eventKeysCsv = eventKeys.joinToString(",")
+        val allKeysCsv = currentlyPressedKeys.joinToString(",")
 
-            val packet = DatagramPacket(bytes, bytes.size, addr, udpTargetPort)
-            udp.send(packet)
+        udpSendExecutor.execute {
+            try {
+                // Format: SEQ|ACTION|EVENT_KEYS|ALL_PRESSED_KEYS
+                val payloadStr = "$seq|$action|$eventKeysCsv|$allKeysCsv"
+                val bytes = payloadStr.toByteArray(Charsets.UTF_8)
 
-            if (redundantSend) {
-                // Triple-burst packet send to eliminate Wi-Fi packet drop issues 100%
+                val packet = DatagramPacket(bytes, bytes.size, addr, udpTargetPort)
                 udp.send(packet)
-                udp.send(packet)
+
+                if (redundantSend) {
+                    udp.send(packet)
+                }
+            } catch (e: Exception) {
+                Log.d("TaikoRemoteSender", "UDP send error: ${e.message}")
             }
-        } catch (e: Exception) {
-            Log.d("TaikoRemoteSender", "UDP send error: ${e.message}")
         }
     }
 
@@ -476,6 +481,10 @@ class TaikoAndroidRemoteSender {
             udpSocket?.close()
         } catch (_: Exception) {}
         udpSocket = null
+
+        try {
+            udpSendExecutor.shutdownNow()
+        } catch (_: Exception) {}
 
         synchronized(socketLock) {
             try {
@@ -521,14 +530,55 @@ class TaikoAndroidRemoteReceiver(
 
     private var onClientCountChanged: ((Int) -> Unit)? = null
 
-    private fun startUdpDiscovery(udpPort: Int) {
-        executor.execute {
+    private fun createAndBindDatagramSocket(udpPort: Int, maxRetries: Int = 10, delayMs: Long = 200): DatagramSocket? {
+        var lastErr: Exception? = null
+        for (i in 1..maxRetries) {
+            if (!isRunning) return null
             try {
                 val socket = DatagramSocket(null).apply {
                     reuseAddress = true
                     try { trafficClass = 0x10 } catch (_: Exception) {}
                     bind(InetSocketAddress(udpPort))
                 }
+                return socket
+            } catch (e: Exception) {
+                lastErr = e
+                if (i < maxRetries) {
+                    Log.w("TaikoRemoteReceiver", "UDP bind to $udpPort waiting for socket release (attempt $i/$maxRetries)...")
+                    try { Thread.sleep(delayMs) } catch (_: InterruptedException) { return null }
+                }
+            }
+        }
+        Log.e("TaikoRemoteReceiver", "Failed to bind DatagramSocket to port $udpPort", lastErr)
+        return null
+    }
+
+    private fun createAndBindServerSocket(port: Int, maxRetries: Int = 10, delayMs: Long = 200): ServerSocket? {
+        var lastErr: Exception? = null
+        for (i in 1..maxRetries) {
+            if (!isRunning) return null
+            try {
+                val socket = ServerSocket().apply {
+                    reuseAddress = true
+                    bind(InetSocketAddress(port))
+                }
+                return socket
+            } catch (e: Exception) {
+                lastErr = e
+                if (i < maxRetries) {
+                    Log.w("TaikoRemoteReceiver", "TCP Server bind to $port waiting for socket release (attempt $i/$maxRetries)...")
+                    try { Thread.sleep(delayMs) } catch (_: InterruptedException) { return null }
+                }
+            }
+        }
+        Log.e("TaikoRemoteReceiver", "Failed to bind ServerSocket to port $port", lastErr)
+        return null
+    }
+
+    private fun startUdpDiscovery(udpPort: Int) {
+        executor.execute {
+            try {
+                val socket = createAndBindDatagramSocket(udpPort) ?: return@execute
                 udpDiscoverySocket = socket
                 val buffer = ByteArray(256)
                 while (isRunning && !socket.isClosed) {
@@ -555,10 +605,9 @@ class TaikoAndroidRemoteReceiver(
     private fun startUdpInputServer(udpPort: Int) {
         executor.execute {
             try {
-                val socket = DatagramSocket(null).apply {
-                    reuseAddress = true
-                    try { trafficClass = 0x10 } catch (_: Exception) {}
-                    bind(InetSocketAddress(udpPort))
+                val socket = createAndBindDatagramSocket(udpPort) ?: run {
+                    TaikoLogManager.log("UDP 受信サーバーのポート $udpPort が他で利用中です")
+                    return@execute
                 }
                 udpInputSocket = socket
                 TaikoLogManager.log("UDP 超低遅延入力サーバー起動 (ポート $udpPort)")
@@ -643,10 +692,11 @@ class TaikoAndroidRemoteReceiver(
 
         executor.execute {
             try {
-                serverSocket = ServerSocket().apply {
-                    reuseAddress = true
-                    bind(InetSocketAddress(port))
+                val sSocket = createAndBindServerSocket(port) ?: run {
+                    TaikoLogManager.log("受信サーバー起動失敗: ポート $port が使用中です")
+                    return@execute
                 }
+                serverSocket = sSocket
                 Log.d("TaikoRemoteReceiver", "Receiver bound successfully to port $port")
                 TaikoLogManager.log("受信待機サーバー起動 (ゲーム側): ポート $port で送信側 (太鼓) からの接続を待機中")
 

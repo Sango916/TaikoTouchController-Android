@@ -55,6 +55,9 @@ object TaikoUsbDirectManager {
     @Volatile private var isConnecting = false
     @Volatile private var isReceiverRegistered = false
 
+    private val requestedDeviceIds = java.util.Collections.synchronizedSet(HashSet<Int>())
+    private val requestedAccessoryKeys = java.util.Collections.synchronizedSet(HashSet<String>())
+
     // Accessory Mode Variables
     private var fileDescriptor: ParcelFileDescriptor? = null
     private var inputStream: FileInputStream? = null
@@ -119,6 +122,8 @@ object TaikoUsbDirectManager {
         monitorJob?.cancel()
         readJob?.cancel()
         closeStreams()
+        requestedDeviceIds.clear()
+        requestedAccessoryKeys.clear()
 
         if (isReceiverRegistered) {
             try {
@@ -163,9 +168,13 @@ object TaikoUsbDirectManager {
             val accessoryList = try { usbManager.accessoryList } catch (e: Throwable) { null }
             if (!accessoryList.isNullOrEmpty()) {
                 val accessory = accessoryList[0]
+                val accKey = "${accessory.manufacturer}_${accessory.model}_${accessory.serial}"
                 val hasPerm = try { usbManager.hasPermission(accessory) } catch (e: Throwable) { false }
                 if (!hasPerm) {
-                    requestAccessoryPermission(context, usbManager, accessory)
+                    if (!requestedAccessoryKeys.contains(accKey)) {
+                        requestedAccessoryKeys.add(accKey)
+                        requestAccessoryPermission(context, usbManager, accessory)
+                    }
                     isConnecting = false
                     return
                 }
@@ -178,10 +187,14 @@ object TaikoUsbDirectManager {
             val deviceList = try { usbManager.deviceList } catch (e: Throwable) { null }
             if (deviceList != null) {
                 for ((_, device) in deviceList) {
+                    val devId = device.deviceId
                     if (isGoogleAoaDevice(device)) {
                         val hasPerm = try { usbManager.hasPermission(device) } catch (e: Throwable) { false }
                         if (!hasPerm) {
-                            requestDevicePermission(context, usbManager, device)
+                            if (!requestedDeviceIds.contains(devId)) {
+                                requestedDeviceIds.add(devId)
+                                requestDevicePermission(context, usbManager, device)
+                            }
                             isConnecting = false
                             return
                         }
@@ -194,7 +207,10 @@ object TaikoUsbDirectManager {
                         if (hasPerm) {
                             initiateAoaHandshake(usbManager, device)
                         } else {
-                            requestDevicePermission(context, usbManager, device)
+                            if (!requestedDeviceIds.contains(devId)) {
+                                requestedDeviceIds.add(devId)
+                                requestDevicePermission(context, usbManager, device)
+                            }
                         }
                     }
                 }
@@ -582,10 +598,14 @@ object TaikoUsbDirectManager {
                 } else if (UsbManager.ACTION_USB_ACCESSORY_DETACHED == action ||
                            UsbManager.ACTION_USB_DEVICE_DETACHED == action) {
                     TaikoLogManager.log("USB ケーブルが抜かれました - リセット")
+                    requestedDeviceIds.clear()
+                    requestedAccessoryKeys.clear()
                     closeStreams()
                 } else if (UsbManager.ACTION_USB_ACCESSORY_ATTACHED == action ||
                            UsbManager.ACTION_USB_DEVICE_ATTACHED == action) {
                     TaikoLogManager.log("USB ケーブル挿入検知")
+                    requestedDeviceIds.clear()
+                    requestedAccessoryKeys.clear()
                     tryConnectUsb(context)
                 }
             } catch (e: Throwable) {
