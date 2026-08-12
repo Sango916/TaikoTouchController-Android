@@ -54,6 +54,8 @@ object TaikoUsbDirectManager {
     @Volatile private var isConnected = false
     @Volatile private var isConnecting = false
     @Volatile private var isReceiverRegistered = false
+    @Volatile private var isPermissionPending = false
+    @Volatile private var lastPermissionRequestTime = 0L
 
     private val requestedDeviceIds = java.util.Collections.synchronizedSet(HashSet<Int>())
     private val requestedAccessoryKeys = java.util.Collections.synchronizedSet(HashSet<String>())
@@ -119,6 +121,7 @@ object TaikoUsbDirectManager {
     @Synchronized
     fun stop(context: Context) {
         isRunning = false
+        isPermissionPending = false
         monitorJob?.cancel()
         readJob?.cancel()
         closeStreams()
@@ -138,6 +141,19 @@ object TaikoUsbDirectManager {
         _isConnectedState.value = false
         isConnected = false
         TaikoLogManager.log("USB Direct Driver 停止しました")
+    }
+
+    fun restart(context: Context) {
+        TaikoLogManager.log("USB Direct Driver を完全リセット・再起動中...")
+        stop(context)
+        scope.launch {
+            delay(150)
+            start(context)
+            delay(300)
+            tryConnectUsb(context)
+            delay(800)
+            tryConnectUsb(context)
+        }
     }
 
     private fun startPolling(context: Context) {
@@ -263,6 +279,11 @@ object TaikoUsbDirectManager {
     }
 
     private fun requestAccessoryPermission(context: Context, usbManager: UsbManager, accessory: UsbAccessory) {
+        val now = System.currentTimeMillis()
+        if (isPermissionPending || (now - lastPermissionRequestTime < 3000L)) return
+        isPermissionPending = true
+        lastPermissionRequestTime = now
+
         try {
             val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
             val permissionIntent = PendingIntent.getBroadcast(
@@ -270,11 +291,17 @@ object TaikoUsbDirectManager {
             )
             usbManager.requestPermission(accessory, permissionIntent)
         } catch (e: Throwable) {
+            isPermissionPending = false
             Log.e(TAG, "requestAccessoryPermission error", e)
         }
     }
 
     private fun requestDevicePermission(context: Context, usbManager: UsbManager, device: UsbDevice) {
+        val now = System.currentTimeMillis()
+        if (isPermissionPending || (now - lastPermissionRequestTime < 3000L)) return
+        isPermissionPending = true
+        lastPermissionRequestTime = now
+
         try {
             val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
             val permissionIntent = PendingIntent.getBroadcast(
@@ -282,6 +309,7 @@ object TaikoUsbDirectManager {
             )
             usbManager.requestPermission(device, permissionIntent)
         } catch (e: Throwable) {
+            isPermissionPending = false
             Log.e(TAG, "requestDevicePermission error", e)
         }
     }
@@ -582,31 +610,49 @@ object TaikoUsbDirectManager {
                             intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
                         }
 
+                        isPermissionPending = false
                         val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
                         val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
 
-                        if (granted && accessory != null) {
-                            openAccessoryStream(usbManager, accessory)
-                        } else if (granted && device != null) {
-                            if (isGoogleAoaDevice(device)) {
-                                openHostBulkStream(usbManager, device)
-                            } else {
-                                initiateAoaHandshake(usbManager, device)
+                        if (granted) {
+                            if (accessory != null) {
+                                openAccessoryStream(usbManager, accessory)
+                            } else if (device != null) {
+                                if (isGoogleAoaDevice(device)) {
+                                    openHostBulkStream(usbManager, device)
+                                } else {
+                                    initiateAoaHandshake(usbManager, device)
+                                }
+                            }
+                            // Schedule delayed auto-retry passes after permission grant
+                            scope.launch {
+                                delay(300)
+                                tryConnectUsb(context)
+                                delay(800)
+                                tryConnectUsb(context)
                             }
                         }
                     }
                 } else if (UsbManager.ACTION_USB_ACCESSORY_DETACHED == action ||
                            UsbManager.ACTION_USB_DEVICE_DETACHED == action) {
                     TaikoLogManager.log("USB ケーブルが抜かれました - リセット")
+                    isPermissionPending = false
                     requestedDeviceIds.clear()
                     requestedAccessoryKeys.clear()
                     closeStreams()
                 } else if (UsbManager.ACTION_USB_ACCESSORY_ATTACHED == action ||
                            UsbManager.ACTION_USB_DEVICE_ATTACHED == action) {
                     TaikoLogManager.log("USB ケーブル挿入検知")
+                    isPermissionPending = false
                     requestedDeviceIds.clear()
                     requestedAccessoryKeys.clear()
                     tryConnectUsb(context)
+                    scope.launch {
+                        delay(400)
+                        tryConnectUsb(context)
+                        delay(1200)
+                        tryConnectUsb(context)
+                    }
                 }
             } catch (e: Throwable) {
                 Log.e(TAG, "Error in usbReceiver.onReceive", e)

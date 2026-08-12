@@ -58,6 +58,7 @@ fun SettingsPanel(
     remoteSenderStatus: String = "disconnected",
     remoteReceiverClientsCount: Int = 0,
     onConnectRemoteSender: () -> Unit = {},
+    onResetConnection: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
@@ -781,6 +782,25 @@ fun SettingsPanel(
                                 Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text("📱 AndroidのUSB設定を開く", fontSize = 11.sp, color = Color.White)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        // Universal Port & Connection Reset Button
+                        Button(
+                            onClick = onResetConnection,
+                            colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0xFF059669) else Color(0xFF10B981)),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("⚡ 通信・ポート再初期化 (1タップ再接続)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                             }
                         }
 

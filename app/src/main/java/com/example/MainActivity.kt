@@ -1,6 +1,7 @@
 package com.example
 
 import android.content.Context
+import android.content.Intent
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
@@ -8,6 +9,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.view.KeyEvent
+import android.widget.Toast
 import rikka.shizuku.Shizuku
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -421,6 +423,7 @@ class MainActivity : ComponentActivity() {
                                             remoteSenderStatus = remoteSenderStatusState.value,
                                             remoteReceiverClientsCount = remoteReceiverClientsCountState.value,
                                             onConnectRemoteSender = { connectRemoteSender() },
+                                            onResetConnection = { resetConnection() },
                                             modifier = Modifier.weight(1f)
                                         )
                                     }
@@ -467,6 +470,7 @@ class MainActivity : ComponentActivity() {
                                         remoteSenderStatus = remoteSenderStatusState.value,
                                         remoteReceiverClientsCount = remoteReceiverClientsCountState.value,
                                         onConnectRemoteSender = { connectRemoteSender() },
+                                        onResetConnection = { resetConnection() },
                                         modifier = Modifier.weight(1f)
                                     )
                                 }
@@ -853,6 +857,49 @@ class MainActivity : ComponentActivity() {
             stopRemoteReceiver()
             stopRemoteSender()
             TaikoLogManager.log("Switched to $newMode mode: Stopped external connections")
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        TaikoLogManager.log("App received new Intent (USB attach/permission event)")
+        val settings = settingsState.value
+        if (settings.anotherAndroidConnectionType == "wired") {
+            TaikoUsbDirectManager.restart(this)
+        }
+    }
+
+    private fun resetConnection() {
+        TaikoLogManager.log("⚡ 通信・ポート再初期化を開始します...")
+        val settings = settingsState.value
+
+        stopTcpServer()
+        stopRemoteSender()
+        stopRemoteReceiver()
+        TaikoUsbDirectManager.stop(this)
+
+        lifecycleScope.launch {
+            delay(150)
+            if (settings.connectionMode == "usb-wired") {
+                startTcpServer()
+                TaikoLogManager.log("USB有線モード: TCP サーバー再起動完了")
+            } else if (settings.connectionMode == "another_android") {
+                if (settings.anotherAndroidConnectionType == "wired") {
+                    TaikoUsbDirectManager.start(this@MainActivity)
+                    delay(300)
+                    TaikoUsbDirectManager.restart(this@MainActivity)
+                }
+                if (settings.anotherAndroidRole == "receiver") {
+                    startRemoteReceiver()
+                } else {
+                    connectRemoteSender()
+                }
+                TaikoLogManager.log("Another Android モード (${settings.anotherAndroidRole}) 再接続完了")
+            } else {
+                startTcpServer()
+            }
+            Toast.makeText(this@MainActivity, "⚡ 通信・ポートを再初期化しました", Toast.LENGTH_SHORT).show()
         }
     }
 

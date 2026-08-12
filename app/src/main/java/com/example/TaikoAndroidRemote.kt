@@ -394,6 +394,10 @@ class TaikoAndroidRemoteSender {
 
         // 3. Ultra-fast UDP Transmission with Redundant Triple-Burst Packets (0ms delay)
         sendUdpStateSyncPacket(action, keys, redundantSend = true)
+        if (!isPressed) {
+            // Instant state sync after key release to eliminate stuck keys on Wi-Fi
+            sendUdpStateSyncPacket("STATE", emptyList(), redundantSend = true)
+        }
 
         // 4. TCP Fallback
         if (executor.isShutdown || executor.isTerminated) {
@@ -436,6 +440,7 @@ class TaikoAndroidRemoteSender {
                 udp.send(packet)
 
                 if (redundantSend) {
+                    udp.send(packet)
                     udp.send(packet)
                 }
             } catch (e: Exception) {
@@ -625,13 +630,12 @@ class TaikoAndroidRemoteReceiver(
                         val eventKeysCsv = parts[2]
                         val allKeysCsv = parts[3]
 
-                        // Ignore outdated sequence packets
-                        if (seq > 0 && seq < lastProcessedSeq.get() - 50) {
+                        // Ignore outdated or duplicate sequence packets to prevent out-of-order DOWN events
+                        val currentLastSeq = lastProcessedSeq.get()
+                        if (seq > 0 && seq <= currentLastSeq) {
                             continue
                         }
-                        if (seq > lastProcessedSeq.get()) {
-                            lastProcessedSeq.set(seq)
-                        }
+                        lastProcessedSeq.set(seq)
 
                         val eventKeys = eventKeysCsv.split(",").map { it.trim() }.filter { it.isNotEmpty() }
                         val expectedPressedKeys = allKeysCsv.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
