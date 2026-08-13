@@ -187,13 +187,15 @@ class MainActivity : ComponentActivity() {
             handleIncomingRemoteKeys(keys, isPressed)
         }
 
-        // Init local TCP Server for PC Connection (Always active to accept PC script connection on port 12345)
+        // Init local TCP Server for PC Connection (Only active when PC USB mode is selected)
         tcpServer = TaikoTcpServer { count ->
             runOnUiThread {
                 tcpClientsCountState.value = count
             }
         }
-        startTcpServer()
+        if (settingsState.value.connectionMode == "usb-wired") {
+            startTcpServer()
+        }
 
         // Shizuku init
         try {
@@ -897,7 +899,7 @@ class MainActivity : ComponentActivity() {
                 }
                 TaikoLogManager.log("Another Android モード (${settings.anotherAndroidRole}) 再接続完了")
             } else {
-                startTcpServer()
+                stopTcpServer()
             }
             Toast.makeText(this@MainActivity, "⚡ 通信・ポートを再初期化しました", Toast.LENGTH_SHORT).show()
         }

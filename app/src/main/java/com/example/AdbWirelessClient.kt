@@ -24,6 +24,8 @@ class AdbWirelessClient {
     private val pendingUpKeycodes = ConcurrentLinkedQueue<String>()
     private val isDownDispatchScheduled = AtomicBoolean(false)
     private val isUpDispatchScheduled = AtomicBoolean(false)
+    private val activePressedScancodes = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
+    private val activePressedKeycodes = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
 
     private var isRootAvailable: Boolean? = null
     private var rootProcess: Process? = null
@@ -459,6 +461,22 @@ class AdbWirelessClient {
             val now = android.os.SystemClock.uptimeMillis()
             val action = if (isPressed) android.view.KeyEvent.ACTION_DOWN else android.view.KeyEvent.ACTION_UP
             
+            if (isPressed) {
+                if (activePressedKeycodes.contains(androidKeycode)) {
+                    try {
+                        val upEvent = android.view.KeyEvent(
+                            now, now, android.view.KeyEvent.ACTION_UP, androidKeycode,
+                            0, 0, findVirtualOrKeyboardDeviceId(), 0,
+                            android.view.KeyEvent.FLAG_FROM_SYSTEM, android.view.InputDevice.SOURCE_KEYBOARD
+                        )
+                        injectMethod?.invoke(iInputManagerInstance, upEvent, 0)
+                    } catch (_: Exception) {}
+                }
+                activePressedKeycodes.add(androidKeycode)
+            } else {
+                activePressedKeycodes.remove(androidKeycode)
+            }
+            
             val targetDeviceId = findVirtualOrKeyboardDeviceId()
             val event = android.view.KeyEvent(
                 now, // downTime
@@ -516,9 +534,15 @@ class AdbWirelessClient {
                     val eventsList = mutableListOf<Int>()
                     items.forEach { (part, key) ->
                         val sc = if (emulationMode == "gamepad") getGamepadScanCode(part) else getKeyboardScancode(key)
+                        if (value == 1 && activePressedScancodes.contains(sc)) {
+                            eventsList.add(1) // EV_KEY
+                            eventsList.add(sc)
+                            eventsList.add(0) // EV_RELEASE
+                        }
                         eventsList.add(1) // EV_KEY
                         eventsList.add(sc)
                         eventsList.add(value)
+                        if (value == 1) activePressedScancodes.add(sc) else activePressedScancodes.remove(sc)
                     }
                     // SYN_REPORT
                     eventsList.add(0)

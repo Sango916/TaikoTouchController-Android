@@ -512,7 +512,8 @@ class TaikoAndroidRemoteReceiver(
 
     @Volatile private var isRunning = false
     private val activePressedKeysOnReceiver = ConcurrentHashMap.newKeySet<String>()
-    private var lastProcessedSeq = AtomicLong(0)
+    private val processedSeqSet = java.util.Collections.newSetFromMap(ConcurrentHashMap<Long, Boolean>())
+    private val processedSeqQueue = java.util.concurrent.ConcurrentLinkedQueue<Long>()
 
     private val _activeClientsState = MutableStateFlow(0)
     val activeClientsState: StateFlow<Int> = _activeClientsState
@@ -614,12 +615,18 @@ class TaikoAndroidRemoteReceiver(
                         val eventKeysCsv = parts[2]
                         val allKeysCsv = parts[3]
 
-                        // Ignore outdated or duplicate sequence packets to prevent out-of-order DOWN events
-                        val currentLastSeq = lastProcessedSeq.get()
-                        if (seq > 0 && seq <= currentLastSeq) {
-                            continue
+                        // Deduplicate exact redundant packet copies without dropping out-of-order packets
+                        if (seq > 0) {
+                            if (processedSeqSet.contains(seq)) {
+                                continue
+                            }
+                            processedSeqSet.add(seq)
+                            processedSeqQueue.add(seq)
+                            while (processedSeqQueue.size > 200) {
+                                val oldSeq = processedSeqQueue.poll()
+                                if (oldSeq != null) processedSeqSet.remove(oldSeq)
+                            }
                         }
-                        lastProcessedSeq.set(seq)
 
                         val eventKeys = eventKeysCsv.split(",").map { it.trim() }.filter { it.isNotEmpty() }
                         val expectedPressedKeys = allKeysCsv.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()

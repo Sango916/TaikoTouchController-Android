@@ -125,7 +125,7 @@ fun SettingsPanel(
         }
 
         // --- PC Connected Active Banner ---
-        if (pcClientsCount > 0) {
+        if (settings.connectionMode == "usb-wired" && pcClientsCount > 0) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF064E3B) else Color(0xFFD1FAE5)),
                 border = BorderStroke(1.5.dp, if (isDark) Color(0xFF10B981) else Color(0xFF10B981)),
@@ -634,17 +634,7 @@ fun SettingsPanel(
                             )
 
                             Button(
-                                onClick = {
-                                    try {
-                                        context.startActivity(android.content.Intent("android.settings.USB_SETTINGS"))
-                                    } catch (e: Exception) {
-                                        try {
-                                            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_WIRELESS_SETTINGS))
-                                        } catch (e2: Exception) {
-                                            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_SETTINGS))
-                                        }
-                                    }
-                                },
+                                onClick = { openUsbSettings(context) },
                                 colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0xFF0284C7) else Color(0xFFEA580C)),
                                 shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier.fillMaxWidth()
@@ -764,17 +754,7 @@ fun SettingsPanel(
                             )
 
                             Button(
-                                onClick = {
-                                    try {
-                                        context.startActivity(android.content.Intent("android.settings.USB_SETTINGS"))
-                                    } catch (e: Exception) {
-                                        try {
-                                            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_WIRELESS_SETTINGS))
-                                        } catch (e2: Exception) {
-                                            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_SETTINGS))
-                                        }
-                                    }
-                                },
+                                onClick = { openUsbSettings(context) },
                                 colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0xFF0284C7) else Color(0xFFEA580C)),
                                 shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier.fillMaxWidth()
@@ -2441,5 +2421,22 @@ private fun ShizukuSettingsContent(
                 }
             }
         }
+    }
+}
+
+private fun openUsbSettings(context: android.content.Context) {
+    val intents = listOf(
+        android.content.Intent("android.settings.TETHER_SETTINGS"),
+        android.content.Intent("android.settings.USB_DETAILS_SETTINGS"),
+        android.content.Intent().apply { setClassName("com.android.settings", "com.android.settings.Settings\$UsbDetailsActivity") },
+        android.content.Intent().apply { setClassName("com.android.settings", "com.android.settings.usb.UsbDetailsActivity") },
+        android.content.Intent(android.provider.Settings.ACTION_SETTINGS)
+    )
+    for (intent in intents) {
+        try {
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            return
+        } catch (_: Exception) {}
     }
 }

@@ -308,15 +308,11 @@ fun TaikoPad(
                             }
                         }
 
-                        // 2. Filter parts based on 40ms software debounce cooldown to filter switch chatter
+                        // 2. Touchscreen taps are processed instantly without artificial debounce
                         val now = SystemClock.uptimeMillis()
-                        val validParts = parts.filter { part ->
-                            val lastTime = lastTriggerTimeMap.getOrDefault(part, 0L)
-                            (now - lastTime) >= 40L
-                        }
+                        val validParts = parts
 
                         if (validParts.isEmpty()) {
-                            // If the requested parts are within the rapid-fire cooldown, discard this tap
                             return@pointerInteropFilter true
                         }
 

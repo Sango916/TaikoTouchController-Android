@@ -37,7 +37,7 @@ data class ControllerSettings(
     var anotherAndroidRole: String = "sender", // "sender" (送信側: 太鼓) / "receiver" (受信側: ゲーム)
     var anotherAndroidConnectionType: String = "wired", // "wired" (有線 USB通信) / "wireless" (無線 Wi-Fi/ネットワーク)
     var anotherAndroidTargetIp: String = "192.168.1.100",
-    var anotherAndroidPort: String = "60001",
+    var anotherAndroidPort: String = "60002",
     var webAdbHost: String = "127.0.0.1",
     var webAdbPort: String = "5555",
     var webAdbPairingPort: String = "",
