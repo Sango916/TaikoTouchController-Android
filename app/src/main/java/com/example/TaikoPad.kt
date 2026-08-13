@@ -287,13 +287,23 @@ fun TaikoPad(
                         val dx = pX - centerX
                         val dy = pY - centerY
                         val distance = sqrt(dx * dx + dy * dy)
-                        val isLeftHand = pX < centerX
 
                         val parts = mutableListOf<String>()
                         val isDon: Boolean
 
                         if (distance < donMaxRadius) {
                             isDon = true
+                            // Determine hand side with a forgiving center threshold for multi-finger rolling
+                            val isLeftDonActive = activePointersPerPartMap["leftDon"]?.isNotEmpty() == true
+                            val isRightDonActive = activePointersPerPartMap["rightDon"]?.isNotEmpty() == true
+                            val donMargin = donMaxRadius * 0.35f
+
+                            val isLeftHand = when {
+                                isLeftDonActive && !isRightDonActive && pX < (centerX + donMargin) -> true
+                                isRightDonActive && !isLeftDonActive && pX > (centerX - donMargin) -> false
+                                else -> pX < centerX
+                            }
+
                             if (settings.singleHandBigNotes && distance < donBigRadius) {
                                 parts.add("leftDon")
                                 parts.add("rightDon")
@@ -302,6 +312,7 @@ fun TaikoPad(
                             }
                         } else {
                             isDon = false
+                            val isLeftHand = pX < centerX
                             if (settings.singleHandBigNotes && distance < katBigRadius) {
                                 parts.add("leftKat")
                                 parts.add("rightKat")

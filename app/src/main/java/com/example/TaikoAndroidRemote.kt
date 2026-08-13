@@ -359,9 +359,21 @@ class TaikoAndroidRemoteSender {
     private fun startHeartbeatThread() {
         heartbeatThread?.interrupt()
         heartbeatThread = Thread {
+            var tickCount = 0
             try {
                 while (isConnected) {
                     Thread.sleep(250) // Idle state sync heartbeat
+                    tickCount++
+                    if (tickCount % 4 == 0) { // Every 1000ms, send TCP Keep-Alive
+                        synchronized(socketLock) {
+                            try {
+                                writer?.write("PING\n")
+                                writer?.flush()
+                            } catch (e: Exception) {
+                                Log.d("TaikoRemoteSender", "TCP keepalive ping note: ${e.message}")
+                            }
+                        }
+                    }
                     sendUdpStateSyncPacket("STATE", emptyList())
                 }
             } catch (_: InterruptedException) {
