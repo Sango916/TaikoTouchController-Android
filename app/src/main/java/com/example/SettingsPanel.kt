@@ -2426,10 +2426,12 @@ private fun ShizukuSettingsContent(
 
 private fun openUsbSettings(context: android.content.Context) {
     val intents = listOf(
-        android.content.Intent("android.settings.TETHER_SETTINGS"),
+        android.content.Intent("android.settings.USB_PREFERENCES_SETTINGS"),
         android.content.Intent("android.settings.USB_DETAILS_SETTINGS"),
         android.content.Intent().apply { setClassName("com.android.settings", "com.android.settings.Settings\$UsbDetailsActivity") },
         android.content.Intent().apply { setClassName("com.android.settings", "com.android.settings.usb.UsbDetailsActivity") },
+        android.content.Intent("android.settings.CONNECTED_DEVICE_SETTINGS"),
+        android.content.Intent("android.settings.TETHER_SETTINGS"),
         android.content.Intent(android.provider.Settings.ACTION_SETTINGS)
     )
     for (intent in intents) {
