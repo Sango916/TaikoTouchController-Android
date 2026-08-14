@@ -741,8 +741,8 @@ class MainActivity : ComponentActivity() {
         adbClient?.setInjectionMethod(settingsCur.injectionMethod)
         adbClient?.setGamepadKeyConfig(settingsCur.gamepadKeyConfig)
 
-        val items = keys.mapNotNull { rawKeyOrPart ->
-            val part = when (rawKeyOrPart) {
+        val parts = keys.mapNotNull { rawKeyOrPart ->
+            when (rawKeyOrPart) {
                 "leftDon", "leftKat", "rightDon", "rightKat" -> rawKeyOrPart
                 "F", "f" -> "leftDon"
                 "J", "j" -> "rightDon"
@@ -759,40 +759,11 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
-            val keyChar = if (emulationMode == "gamepad") {
-                when (part) {
-                    "leftKat" -> settingsCur.gamepadKeyConfig.leftKat
-                    "leftDon" -> settingsCur.gamepadKeyConfig.leftDon
-                    "rightDon" -> settingsCur.gamepadKeyConfig.rightDon
-                    "rightKat" -> settingsCur.gamepadKeyConfig.rightKat
-                    else -> ""
-                }
-            } else {
-                when (part) {
-                    "leftKat" -> settingsCur.keyConfig.leftKat
-                    "leftDon" -> settingsCur.keyConfig.leftDon
-                    "rightDon" -> settingsCur.keyConfig.rightDon
-                    "rightKat" -> settingsCur.keyConfig.rightKat
-                    else -> ""
-                }
-            }
-            if (keyChar.isNotEmpty()) part to keyChar else null
         }
 
-        // Direct background thread key injection
-        if (items.isNotEmpty()) {
-            if (items.size == 1) {
-                val (part, keyChar) = items[0]
-                adbClient?.sendKeyEvent(part, keyChar, isPressed, settingsCur.simultaneousGroupingMs)
-            } else {
-                adbClient?.sendMultiKeyEvents(items, isPressed, settingsCur.simultaneousGroupingMs)
-            }
-        }
-
-        // Asynchronously update UI highlight state on main thread
-        runOnUiThread {
-            items.forEach { item ->
-                updateActiveInputsState(item.first, isPressed)
+        if (parts.isNotEmpty()) {
+            runOnUiThread {
+                triggerMultiInputs(parts.map { it to isPressed }, fromTouch = false)
             }
         }
     }

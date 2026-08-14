@@ -104,8 +104,8 @@ class TaikoAndroidRemoteSender {
 
     companion object {
         fun scanAndFindReceiverIp(
-            targetPort: Int = 60001,
-            udpDiscoveryPort: Int = 60002,
+            targetPort: Int = 60002,
+            udpDiscoveryPort: Int = 60004,
             connectionType: String = "wireless", // "wired" or "wireless"
             onFound: (ip: String) -> Unit,
             onNotFound: () -> Unit
@@ -115,30 +115,35 @@ class TaikoAndroidRemoteSender {
                 val isWired = connectionType == "wired"
                 val priorityIps = LinkedHashSet<String>()
 
-                if (isWired) {
-                    val wiredIps = NetworkUtils.getWiredLocalIpAddresses()
-                    for (localIp in wiredIps) {
-                        val parts = localIp.split(".")
-                        if (parts.size == 4) {
-                            val prefix = "${parts[0]}.${parts[1]}.${parts[2]}"
-                            priorityIps.add("$prefix.1")
-                            priorityIps.add("$prefix.129")
-                            priorityIps.add("$prefix.2")
-                            priorityIps.add("$prefix.100")
-                            priorityIps.add("$prefix.254")
-                        }
-                    }
-                    priorityIps.add("192.168.42.129")
-                    priorityIps.add("192.168.42.1")
-                    priorityIps.add("192.168.43.1")
-                    priorityIps.add("192.168.49.1")
-                    priorityIps.add("10.0.2.2")
-                    priorityIps.add("127.0.0.1")
+                // Common Android Hotspot / Tethering / P2P gateway & client addresses
+                priorityIps.add("192.168.43.1")   // Android Wi-Fi Hotspot standard AP IP
+                priorityIps.add("192.168.49.1")   // Wi-Fi Direct P2P Group Owner IP
+                priorityIps.add("192.168.42.129") // Android USB Tethering client IP
+                priorityIps.add("192.168.42.1")   // Android USB Tethering host IP
+                priorityIps.add("192.168.44.1")
+                priorityIps.add("192.168.50.1")
+                priorityIps.add("10.0.2.2")
+                priorityIps.add("127.0.0.1")
+
+                val localIps = if (isWired) {
+                    NetworkUtils.getWiredLocalIpAddresses().ifEmpty { NetworkUtils.getAllLocalIpAddresses() }
                 } else {
-                    priorityIps.add("192.168.42.129")
-                    priorityIps.add("192.168.42.1")
+                    NetworkUtils.getAllLocalIpAddresses()
                 }
 
+                for (localIp in localIps) {
+                    val parts = localIp.split(".")
+                    if (parts.size == 4) {
+                        val prefix = "${parts[0]}.${parts[1]}.${parts[2]}"
+                        priorityIps.add("$prefix.1")
+                        priorityIps.add("$prefix.129")
+                        priorityIps.add("$prefix.2")
+                        priorityIps.add("$prefix.100")
+                        priorityIps.add("$prefix.254")
+                    }
+                }
+
+                // 1. Fast probe priority IPs (150ms timeout)
                 if (priorityIps.isNotEmpty()) {
                     val priorityPool = Executors.newFixedThreadPool(minOf(32, priorityIps.size))
                     val priorityFutures = priorityIps.map { ip ->
@@ -164,13 +169,14 @@ class TaikoAndroidRemoteSender {
                     priorityPool.shutdownNow()
                 }
 
+                // 2. Try UDP Broadcast Discovery (if Wi-Fi multicast is allowed by router)
                 if (foundIp == null && !isWired) {
                     try {
                         val udpSocket = DatagramSocket(null).apply {
                             reuseAddress = true
                             bind(InetSocketAddress(0))
                         }
-                        udpSocket.soTimeout = 400
+                        udpSocket.soTimeout = 300
                         udpSocket.broadcast = true
                         val reqMsg = "DISCOVER_TAIKO_RECEIVER".toByteArray(Charsets.UTF_8)
                         val packet = DatagramPacket(
@@ -194,13 +200,13 @@ class TaikoAndroidRemoteSender {
                     }
                 }
 
+                // 3. Fallback to Full Subnet Fast Parallel Scan
                 if (foundIp == null) {
-                    val localIps = if (isWired) {
-                        NetworkUtils.getWiredLocalIpAddresses().ifEmpty { NetworkUtils.getAllLocalIpAddresses() }
-                    } else {
-                        NetworkUtils.getAllLocalIpAddresses()
-                    }
                     val candidateIps = LinkedHashSet<String>()
+                    // Ensure tethering subnet is included
+                    for (i in 1..254) {
+                        candidateIps.add("192.168.43.$i")
+                    }
 
                     for (localIp in localIps) {
                         val parts = localIp.split(".")
@@ -216,7 +222,7 @@ class TaikoAndroidRemoteSender {
                     }
 
                     if (candidateIps.isNotEmpty()) {
-                        val pool = Executors.newFixedThreadPool(64)
+                        val pool = Executors.newFixedThreadPool(128)
                         val futures = candidateIps.map { ip ->
                             pool.submit<String?> {
                                 try {
@@ -645,27 +651,23 @@ class TaikoAndroidRemoteReceiver(
 
                         keyDispatchExecutor.execute {
                             try {
-                                // 1. State Delta Resolution: resolve any dropped or out-of-order packets
-                                val missingPressed = expectedPressedKeys - activePressedKeysOnReceiver
-                                val stuckPressed = activePressedKeysOnReceiver - expectedPressedKeys
-
-                                if (missingPressed.isNotEmpty()) {
-                                    onKeyEventsReceived(missingPressed.toList(), true)
-                                    activePressedKeysOnReceiver.addAll(missingPressed)
-                                }
-                                if (stuckPressed.isNotEmpty()) {
-                                    onKeyEventsReceived(stuckPressed.toList(), false)
-                                    activePressedKeysOnReceiver.removeAll(stuckPressed)
-                                }
-
-                                // 2. Dispatch explicit key event (guarantees fast consecutive drum hits)
-                                if (eventKeys.isNotEmpty() && action != "STATE") {
-                                    val isPressed = action.equals("DOWN", ignoreCase = true)
-                                    onKeyEventsReceived(eventKeys, isPressed)
-                                    if (isPressed) {
-                                        activePressedKeysOnReceiver.addAll(eventKeys)
-                                    } else {
-                                        activePressedKeysOnReceiver.removeAll(eventKeys.toSet())
+                                if (action == "STATE") {
+                                    // Periodic State Sync: safely clean up any stuck keys or catch lost releases
+                                    val stuckPressed = activePressedKeysOnReceiver - expectedPressedKeys
+                                    if (stuckPressed.isNotEmpty()) {
+                                        onKeyEventsReceived(stuckPressed.toList(), false)
+                                        activePressedKeysOnReceiver.removeAll(stuckPressed)
+                                    }
+                                } else {
+                                    // Explicit Key Event (DOWN / UP): Clean, zero-duplicate, single dispatch
+                                    if (eventKeys.isNotEmpty()) {
+                                        val isPressed = action.equals("DOWN", ignoreCase = true)
+                                        onKeyEventsReceived(eventKeys, isPressed)
+                                        if (isPressed) {
+                                            activePressedKeysOnReceiver.addAll(eventKeys)
+                                        } else {
+                                            activePressedKeysOnReceiver.removeAll(eventKeys.toSet())
+                                        }
                                     }
                                 }
                             } catch (e: Exception) {
