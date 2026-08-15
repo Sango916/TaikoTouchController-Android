@@ -32,6 +32,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
@@ -278,10 +282,17 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            var appWidthPx by remember { mutableFloatStateOf(0f) }
+            var appHeightPx by remember { mutableFloatStateOf(0f) }
+
             Surface(
                 modifier = Modifier
                     .fillMaxSize()
-                    .windowInsetsPadding(if (isFullScreen) WindowInsets(0, 0, 0, 0) else WindowInsets.safeDrawing),
+                    .windowInsetsPadding(if (isFullScreen) WindowInsets(0, 0, 0, 0) else WindowInsets.safeDrawing)
+                    .onGloballyPositioned { coordinates ->
+                        appWidthPx = coordinates.size.width.toFloat()
+                        appHeightPx = coordinates.size.height.toFloat()
+                    },
                 color = Color(0xFFFDF6E2).invertIfDark(isDarkTheme) // Antique Japanese Beige Background (inverted in dark theme)
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
@@ -302,7 +313,7 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier.fillMaxSize()
                             )
 
-                            // Overlaid exit button with long-press protection against accidental taps (普通のタップでは閉じず右カッとなる)
+                            // Overlaid exit button with strict long-press detection (連打・ダブルタップでは絶対に閉じず右カッとなる)
                             Box(
                                 contentAlignment = Alignment.Center,
                                 modifier = Modifier
@@ -311,25 +322,23 @@ class MainActivity : ComponentActivity() {
                                     .size(44.dp)
                                     .clip(CircleShape)
                                     .background(Color.Black.copy(alpha = 0.5f))
-                                    .combinedClickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = rememberRipple(bounded = true, color = Color.White),
-                                        onClick = {
-                                            // Normal tap triggers Right Kat (右カッ)
-                                            triggerInput("rightKat", true)
-                                            if (settings.soundEffects && audioPlayer != null) {
-                                                audioPlayer?.playKat(settings.soundVolume)
-                                            }
-                                            triggerVibration(false)
-                                            lifecycleScope.launch {
-                                                delay(40)
+                                    .pointerInput(Unit) {
+                                        detectTapGestures(
+                                            onPress = {
+                                                // Trigger right kat immediately on press
+                                                triggerInput("rightKat", true)
+                                                if (settings.soundEffects && audioPlayer != null) {
+                                                    audioPlayer?.playKat(settings.soundVolume)
+                                                }
+                                                triggerVibration(false)
+                                                tryAwaitRelease()
                                                 triggerInput("rightKat", false)
+                                            },
+                                            onLongPress = {
+                                                isFullScreen = false
                                             }
-                                        },
-                                        onLongClick = {
-                                            isFullScreen = false
-                                        }
-                                    )
+                                        )
+                                    }
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.FullscreenExit,
@@ -418,19 +427,29 @@ class MainActivity : ComponentActivity() {
                                     }
 
                                     if (activeTab == 0) {
-                                        TaikoPad(
-                                            settings = settings,
-                                            activeInputs = activeInputs,
-                                            onInputTriggered = { part, isPressed ->
-                                                triggerInput(part, isPressed)
-                                            },
-                                            onMultiInputTriggered = { inputsList ->
-                                                triggerMultiInputs(inputsList)
-                                            },
-                                            audioPlayer = audioPlayer,
-                                            vibrateAction = { isBig -> triggerVibration(isBig) },
-                                            modifier = Modifier.weight(1f)
-                                        )
+                                        BoxWithConstraints(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .weight(1f),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            val appAspect = if (appHeightPx > 0f) appWidthPx / appHeightPx else 16f / 9f
+                                            TaikoPad(
+                                                settings = settings,
+                                                activeInputs = activeInputs,
+                                                onInputTriggered = { part, isPressed ->
+                                                    triggerInput(part, isPressed)
+                                                },
+                                                onMultiInputTriggered = { inputsList ->
+                                                    triggerMultiInputs(inputsList)
+                                                },
+                                                audioPlayer = audioPlayer,
+                                                vibrateAction = { isBig -> triggerVibration(isBig) },
+                                                modifier = Modifier
+                                                    .aspectRatio(appAspect, matchHeightConstraintsFirst = false)
+                                                    .fillMaxSize()
+                                            )
+                                        }
                                     } else {
                                         SettingsPanel(
                                             settings = settings,
@@ -465,19 +484,29 @@ class MainActivity : ComponentActivity() {
                                         .weight(1f),
                                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    TaikoPad(
-                                        settings = settings,
-                                        activeInputs = activeInputs,
-                                        onInputTriggered = { part, isPressed ->
-                                            triggerInput(part, isPressed)
-                                        },
-                                        onMultiInputTriggered = { inputsList ->
-                                            triggerMultiInputs(inputsList)
-                                        },
-                                        audioPlayer = audioPlayer,
-                                        vibrateAction = { isBig -> triggerVibration(isBig) },
-                                        modifier = Modifier.weight(1.3f)
-                                    )
+                                    BoxWithConstraints(
+                                        modifier = Modifier
+                                            .weight(1.3f)
+                                            .fillMaxHeight(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        val appAspect = if (appHeightPx > 0f) appWidthPx / appHeightPx else 16f / 9f
+                                        TaikoPad(
+                                            settings = settings,
+                                            activeInputs = activeInputs,
+                                            onInputTriggered = { part, isPressed ->
+                                                triggerInput(part, isPressed)
+                                            },
+                                            onMultiInputTriggered = { inputsList ->
+                                                triggerMultiInputs(inputsList)
+                                            },
+                                            audioPlayer = audioPlayer,
+                                            vibrateAction = { isBig -> triggerVibration(isBig) },
+                                            modifier = Modifier
+                                                .aspectRatio(appAspect, matchHeightConstraintsFirst = true)
+                                                .fillMaxSize()
+                                        )
+                                    }
 
                                     SettingsPanel(
                                         settings = settings,
