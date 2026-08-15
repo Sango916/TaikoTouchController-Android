@@ -466,8 +466,7 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
         val density = dm.density
 
         val bubbleSize = (56 * density).toInt()
-        val menuWidth = (210 * density).toInt()
-        val menuHeight = (195 * density).toInt()
+        val menuWidth = (220 * density).toInt()
         val margin = (12 * density).toInt()
 
         // Clamp bubble button position so it is always fully on-screen
@@ -478,33 +477,39 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
         bubblePosY = bubblePosY.coerceIn(margin.toFloat(), maxBubbleY)
 
         val isExpanded = isMenuExpandedState.value
-        val isRight = bubblePosX > (dm.widthPixels / 2f)
-        val isTop = bubblePosY <= (dm.heightPixels / 2f)
+        val isRight = (bubblePosX + bubbleSize / 2f) > (dm.widthPixels / 2f)
+        val isTop = (bubblePosY + bubbleSize / 2f) <= (dm.heightPixels / 2f)
 
         isPlacedOnRightState.value = isRight
         isPlacedOnTopState.value = isTop
 
         if (!isExpanded) {
+            params.width = bubbleSize
+            params.height = WindowManager.LayoutParams.WRAP_CONTENT
             params.x = bubblePosX.toInt()
             params.y = bubblePosY.toInt()
         } else {
-            // When expanded, the Window contains both Bubble and Menu Card
+            params.width = menuWidth
+            params.height = WindowManager.LayoutParams.WRAP_CONTENT
+
             // Horizontal window position:
-            // If on right side, menu card expands left of bubble: window X starts so bubble is on the right
+            // If on right side, the bubble is aligned to the right inside the menu window (x = menuWidth - bubbleSize).
+            // To keep the bubble at the exact same screen X (bubblePosX), params.x starts at bubblePosX + bubbleSize - menuWidth.
             val targetX = if (isRight) {
-                (bubblePosX + bubbleSize - menuWidth).toInt().coerceIn(margin, dm.widthPixels - menuWidth - margin)
+                (bubblePosX.toInt() + bubbleSize - menuWidth).coerceIn(margin, dm.widthPixels - menuWidth - margin)
             } else {
                 bubblePosX.toInt().coerceIn(margin, dm.widthPixels - menuWidth - margin)
             }
 
             // Vertical window position:
-            // If on top half, menu card is below bubble: window Y starts at bubblePosY
-            // If on bottom half, menu card is above bubble: window Y starts above bubble
-            val totalHeight = bubbleSize + menuHeight + (8 * density).toInt()
+            // If on top half, menu card is below bubble: window Y starts at bubblePosY.
+            // If on bottom half, menu card is above bubble: window Y is shifted so the bubble button stays at bubblePosY.
+            val estimatedMenuHeight = (205 * density).toInt()
+            val totalHeight = bubbleSize + estimatedMenuHeight + (8 * density).toInt()
             val targetY = if (isTop) {
                 bubblePosY.toInt().coerceIn(margin, dm.heightPixels - totalHeight - margin)
             } else {
-                (bubblePosY + bubbleSize - totalHeight).toInt().coerceIn(margin, dm.heightPixels - totalHeight - margin)
+                (bubblePosY.toInt() + bubbleSize - totalHeight).coerceIn(margin, dm.heightPixels - totalHeight - margin)
             }
 
             params.x = targetX.coerceAtLeast(0)
@@ -597,14 +602,7 @@ fun FloatingBubbleMenu(
     Column(
         horizontalAlignment = horizontalAlign,
         verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier
-            .wrapContentSize()
-            .pointerInput(Unit) {
-                detectDragGestures { change, dragAmount ->
-                    change.consume()
-                    onDragDelta(dragAmount.x, dragAmount.y)
-                }
-            }
+        modifier = Modifier.width(220.dp)
     ) {
         // If bubble is in bottom half (not top), Menu is placed ABOVE the bubble
         if (!isPlacedOnTop) {
@@ -625,7 +623,8 @@ fun FloatingBubbleMenu(
         // Circular Floating Bubble Trigger
         BubbleButton(
             isTouchEnabled = isTouchEnabled,
-            onClick = onToggleMenu
+            onClick = onToggleMenu,
+            onDragDelta = onDragDelta
         )
 
         // If bubble is in top half, Menu is placed BELOW the bubble
@@ -649,7 +648,8 @@ fun FloatingBubbleMenu(
 @Composable
 fun BubbleButton(
     isTouchEnabled: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onDragDelta: (Float, Float) -> Unit
 ) {
     val bubbleColor = if (isTouchEnabled) {
         Brush.radialGradient(listOf(Color(0xFFF97316), Color(0xFFDC2626)))
@@ -660,12 +660,28 @@ fun BubbleButton(
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
-            .size(52.dp)
+            .size(56.dp)
             .shadow(8.dp, CircleShape)
             .clip(CircleShape)
             .background(bubbleColor)
             .border(2.dp, if (isTouchEnabled) Color(0xFFFDE68A) else Color(0xFF93C5FD), CircleShape)
-            .clickable { onClick() }
+            .pointerInput(Unit) {
+                var totalDrag = 0f
+                detectDragGestures(
+                    onDragStart = { totalDrag = 0f },
+                    onDragEnd = {
+                        if (totalDrag < 10f) {
+                            onClick()
+                        }
+                    },
+                    onDragCancel = { },
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        totalDrag += Math.abs(dragAmount.x) + Math.abs(dragAmount.y)
+                        onDragDelta(dragAmount.x, dragAmount.y)
+                    }
+                )
+            }
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -698,7 +714,7 @@ fun BubbleMenuCard(
         border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFFF59E0B).copy(alpha = 0.6f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 10.dp),
         modifier = Modifier
-            .widthIn(min = 180.dp)
+            .fillMaxWidth()
             .padding(vertical = 2.dp)
     ) {
         Column(

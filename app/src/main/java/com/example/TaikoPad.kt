@@ -109,14 +109,13 @@ fun TaikoPad(
     val donMaxRadius = drumRadius * 0.6864f
     val katRimRadius = drumRadius * 0.8000f
 
-    // Dynamic Big Note DS Radii (面: 内側0~donBigRadius, フチ: 外側katBigInnerRadius~katRimRadius/drumRadius)
+    // Dynamic Big Note DS Radii (面: 内側0~donBigRadius, フチ: 内側donMaxRadius~外側katBigOuterRadius)
     val donBigFactor = (settings.donBigNotePercent / 100f).coerceIn(0.10f, 1.0f)
     val donBigRadius = donMaxRadius * donBigFactor
 
     val katBigFactor = (settings.katBigNotePercent / 100f).coerceIn(0.10f, 1.0f)
-    // Kat big note zone covers the outer fraction of the Kat rim: from (donMaxRadius + (katRimRadius - donMaxRadius) * (1 - katBigFactor)) to drum outer edge
-    val katBigInnerRadius = donMaxRadius + (katRimRadius - donMaxRadius) * (1f - katBigFactor)
-    val katBigRadius = drumRadius * 1.0000f
+    // Kat big note zone covers from the inner boundary (donMaxRadius) outwards to katBigOuterRadius
+    val katBigOuterRadius = donMaxRadius + (drumRadius - donMaxRadius) * katBigFactor
 
     // Track active parts per touch pointer ID
     val pointerPartsMap = remember { mutableMapOf<Int, List<String>>() }
@@ -330,7 +329,7 @@ fun TaikoPad(
                             }
                         } else {
                             isDon = false
-                            if (settings.singleHandBigNotes && distance >= katBigInnerRadius && distance <= katBigRadius) {
+                            if (settings.singleHandBigNotes && distance >= donMaxRadius && distance <= katBigOuterRadius) {
                                 parts.add("leftKat")
                                 parts.add("rightKat")
                             } else {
@@ -513,36 +512,26 @@ fun TaikoPad(
                     size = visualDrumSize
                 )
 
-                // 1b. If SingleHandBigNotes is enabled, draw subtle guide ring for Big Kat area (outer rim band)
-                if (settings.singleHandBigNotes) {
-                    val katBigRingColor = if (isDark) Color(0xFF38BDF8).copy(alpha = 0.20f) else Color(0xFF0284C7).copy(alpha = 0.15f)
-                    drawCircle(
-                        color = katBigRingColor,
-                        radius = (katBigInnerRadius + visualDrumRadius) / 2f,
-                        center = Offset(centerX, centerY),
-                        style = Stroke(width = (visualDrumRadius - katBigInnerRadius).coerceAtLeast(1f))
-                    )
-                    // Inner boundary dashed/subtle line for Big Kat zone
-                    drawCircle(
-                        color = if (isDark) Color(0xFF38BDF8).copy(alpha = 0.5f) else Color(0xFF0369A1).copy(alpha = 0.35f),
-                        radius = katBigInnerRadius,
-                        center = Offset(centerX, centerY),
-                        style = Stroke(width = 2f)
-                    )
-                }
-
                 // 2. Active Kat highlight background (Lights up in beautiful Cyan-Blue)
-                // These are drawn up to the full drumRadius (100%), so they protrude slightly past the visual drum rim when tapped.
+                // Small Kat lights up to visualDrumRadius (80%), while Big Kat extends with the configured katBigOuterRadius
+                val leftKatEffectiveRadius = if (visualBigKat) katBigOuterRadius else visualDrumRadius
+                val leftKatEffectiveSize = Size(leftKatEffectiveRadius * 2f, leftKatEffectiveRadius * 2f)
+                val leftKatEffectiveTopLeft = Offset(centerX - leftKatEffectiveRadius, centerY - leftKatEffectiveRadius)
+
                 if (leftKatColor.alpha > 0f) {
                     drawArc(
                         color = leftKatColor,
                         startAngle = 90f,
                         sweepAngle = 180f,
                         useCenter = true,
-                        topLeft = drumTopLeft,
-                        size = drumSize
+                        topLeft = leftKatEffectiveTopLeft,
+                        size = leftKatEffectiveSize
                     )
                 }
+
+                val rightKatEffectiveRadius = if (visualBigKat) katBigOuterRadius else visualDrumRadius
+                val rightKatEffectiveSize = Size(rightKatEffectiveRadius * 2f, rightKatEffectiveRadius * 2f)
+                val rightKatEffectiveTopLeft = Offset(centerX - rightKatEffectiveRadius, centerY - rightKatEffectiveRadius)
 
                 if (rightKatColor.alpha > 0f) {
                     drawArc(
@@ -550,8 +539,8 @@ fun TaikoPad(
                         startAngle = 270f,
                         sweepAngle = 180f,
                         useCenter = true,
-                        topLeft = drumTopLeft,
-                        size = drumSize
+                        topLeft = rightKatEffectiveTopLeft,
+                        size = rightKatEffectiveSize
                     )
                 }
 

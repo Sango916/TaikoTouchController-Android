@@ -1391,7 +1391,7 @@ fun SettingsPanel(
                         }
 
                         Text(
-                            text = "※ 面は中心から指定%内、フチは外周から指定%内をタップすると大音符(両手)になります",
+                            text = "※ 面は中心から指定%内、フチは内側(面との境界)から指定%内をタップすると大音符(両手)になります",
                             fontSize = 9.sp,
                             color = if (isDark) Color.LightGray else Color(0xFF92400E)
                         )
@@ -2281,7 +2281,7 @@ fun TaikoSizeSettingCard(
 
             // Orientation-specific Presets Section
             Text(
-                text = if (isLandscape) "📍 横画面用 プリセット設定 (2枠)" else "📍 縦画面用 プリセット設定 (2枠)",
+                text = if (isLandscape) "📍 横画面用 プリセット設定" else "📍 縦画面用 プリセット設定",
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF78350F).invertIfDark(isDark)
