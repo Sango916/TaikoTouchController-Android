@@ -107,8 +107,6 @@ fun TaikoPad(
 
     // Track active parts per touch pointer ID
     val pointerPartsMap = remember { mutableMapOf<Int, List<String>>() }
-    // Track active pointers per part for multi-finger rolling
-    val activePointersPerPartMap = remember { mutableMapOf<String, MutableSet<Int>>() }
     // Debounce tracker for rapid-fire / chatter prevention (e.g., AYN Thor Android 13 mapping)
     val lastTriggerTimeMap = remember { mutableMapOf<String, Long>() }
 
@@ -326,10 +324,6 @@ fun TaikoPad(
 
                         // Register active pointers per part
                         pointerPartsMap[pointerId] = validParts
-                        validParts.forEach { part ->
-                            val pointerSet = activePointersPerPartMap.getOrPut(part) { mutableSetOf() }
-                            pointerSet.add(pointerId)
-                        }
 
                         // Trigger inputs
                         if (validParts.size == 1) {
@@ -376,39 +370,25 @@ fun TaikoPad(
                     }
 
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_CANCEL -> {
-                        pointerPartsMap[pointerId]?.let { parts ->
-                            val releasedPartsToNotify = mutableListOf<String>()
-                            parts.forEach { part ->
-                                val pointerSet = activePointersPerPartMap[part]
-                                pointerSet?.remove(pointerId)
-                                if (pointerSet.isNullOrEmpty()) {
-                                    activePointersPerPartMap.remove(part)
-                                    releasedPartsToNotify.add(part)
-                                }
-                            }
-                            pointerPartsMap.remove(pointerId)
-
-                            if (releasedPartsToNotify.isNotEmpty()) {
-                                if (releasedPartsToNotify.size == 1) {
-                                    onInputTriggered(releasedPartsToNotify[0], false)
-                                } else {
-                                    onMultiInputTriggered(releasedPartsToNotify.map { it to false })
-                                }
+                        pointerPartsMap.remove(pointerId)?.let { parts ->
+                            if (parts.size == 1) {
+                                onInputTriggered(parts[0], false)
+                            } else {
+                                onMultiInputTriggered(parts.map { it to false })
                             }
                         }
 
                         // Safety check: if no pointers remain on screen, forcibly clear all pressed states
                         if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL || event.pointerCount <= 1) {
                             if (pointerPartsMap.isEmpty()) {
-                                val remainingParts = activePointersPerPartMap.keys.toList()
-                                activePointersPerPartMap.clear()
-                                if (remainingParts.isNotEmpty()) {
-                                    if (remainingParts.size == 1) {
-                                        onInputTriggered(remainingParts[0], false)
-                                    } else {
-                                        onMultiInputTriggered(remainingParts.map { it to false })
-                                    }
-                                }
+                                onMultiInputTriggered(
+                                    listOf(
+                                        "leftDon" to false,
+                                        "rightDon" to false,
+                                        "leftKat" to false,
+                                        "rightKat" to false
+                                    )
+                                )
                             }
                         }
                     }

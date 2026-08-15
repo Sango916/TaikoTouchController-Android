@@ -575,7 +575,7 @@ class MainActivity : ComponentActivity() {
 
         when (settings.connectionMode) {
             "shizuku" -> {
-                if (fromTouch && key.isNotEmpty()) {
+                if (key.isNotEmpty()) {
                     val emulationMode = settings.shizukuEmulationMode
                     adbClient?.setEmulationMode(emulationMode)
                     adbClient?.setInjectionMethod(settings.injectionMethod)
@@ -584,12 +584,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
             "usb-wired" -> {
-                if (fromTouch && key.isNotEmpty()) {
+                if (key.isNotEmpty()) {
                     tcpServer?.sendKeyEvent(key, isPressed)
                 }
             }
             "another_android" -> {
-                if (fromTouch && key.isNotEmpty()) {
+                if (key.isNotEmpty()) {
                     if (settings.anotherAndroidRole == "sender") {
                         remoteSender?.sendKeyEvent(part, isPressed)
                     } else {
@@ -927,8 +927,16 @@ class MainActivity : ComponentActivity() {
             activeRepeatJobs.remove(part)
 
             val pendingJob = pendingReleaseJobs[part]
-            if (pendingJob != null) {
-                pendingJob.cancel()
+            val isCurrentlyActive = when (part) {
+                "leftKat" -> activeInputsState.value.leftKat
+                "leftDon" -> activeInputsState.value.leftDon
+                "rightDon" -> activeInputsState.value.rightDon
+                "rightKat" -> activeInputsState.value.rightKat
+                else -> false
+            }
+
+            if (pendingJob != null || isCurrentlyActive) {
+                pendingJob?.cancel()
                 pendingReleaseJobs.remove(part)
                 TaikoLogManager.log("Touch Down Overlap: $part -> key=$keyChar. Canceling pending release, forcing release/re-press!")
                 // Force an immediate release event, then repress after 5ms so the game registers separate hits
@@ -992,8 +1000,8 @@ class MainActivity : ComponentActivity() {
 
         val activeEmulationMode = settings.activeEmulationMode
 
-        // Fast-path batch multi-key dispatch for big notes
-        if (fromTouch && inputs.isNotEmpty()) {
+        // Fast-path batch multi-key dispatch for simultaneous big notes (inputs > 1)
+        if (inputs.size > 1) {
             val isAllSameAction = inputs.all { it.second == inputs[0].second }
             val actionIsPressed = inputs[0].second
 
@@ -1002,6 +1010,10 @@ class MainActivity : ComponentActivity() {
                     val parts = inputs.map { it.first }
                     if (parts.isNotEmpty()) {
                         remoteSender?.sendMultiKeyEvents(parts, actionIsPressed)
+                        if (actionIsPressed) {
+                            val now = System.currentTimeMillis()
+                            parts.forEach { lastPressTimestamps[it] = now }
+                        }
                         return
                     }
                 } else if (settings.connectionMode == "usb-wired") {
@@ -1051,77 +1063,9 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // 2. Map and delegate individually
+        // 2. Map and delegate single or non-uniform inputs individually
         inputs.forEach { (part, isPressed) ->
-            val keyChar = if (activeEmulationMode == "gamepad") {
-                when (part) {
-                    "leftKat" -> settings.gamepadKeyConfig.leftKat
-                    "leftDon" -> settings.gamepadKeyConfig.leftDon
-                    "rightDon" -> settings.gamepadKeyConfig.rightDon
-                    "rightKat" -> settings.gamepadKeyConfig.rightKat
-                    else -> ""
-                }
-            } else {
-                when (part) {
-                    "leftKat" -> settings.keyConfig.leftKat
-                    "leftDon" -> settings.keyConfig.leftDon
-                    "rightDon" -> settings.keyConfig.rightDon
-                    "rightKat" -> settings.keyConfig.rightKat
-                    else -> ""
-                }
-            }
-            if (keyChar.isNotEmpty()) {
-                if (isPressed) {
-                    lastPressTimestamps[part] = System.currentTimeMillis()
-                    activeRepeatJobs[part]?.cancel()
-                    activeRepeatJobs.remove(part)
-
-                    val pendingJob = pendingReleaseJobs[part]
-                    if (pendingJob != null) {
-                        pendingJob.cancel()
-                        pendingReleaseJobs.remove(part)
-                        // Force an immediate release event, then repress after 5ms so the game registers separate hits
-                        dispatchPhysicalKey(part, keyChar, false, fromTouch)
-                        lifecycleScope.launch(Dispatchers.IO) {
-                            delay(5)
-                            dispatchPhysicalKey(part, keyChar, true, fromTouch)
-                        }
-                    } else {
-                        dispatchPhysicalKey(part, keyChar, true, fromTouch)
-                    }
-                    
-                    // Handle repeat logic: Only repeat rapidly when Turbo (Auto-Repeat) is explicitly enabled.
-                    // For standard keyboard/gamepad behavior, we send a single Down event and stay pressed down.
-                    if (settings.isTurboEnabled) {
-                        activeRepeatJobs[part] = lifecycleScope.launch(Dispatchers.IO) {
-                            val interval = settings.turboIntervalMs.toLong()
-                            while (isActive) {
-                                delay(interval)
-                                dispatchPhysicalKey(part, keyChar, false, fromTouch)
-                                delay(10L)
-                                dispatchPhysicalKey(part, keyChar, true, fromTouch)
-                            }
-                        }
-                    }
-                } else {
-                    activeRepeatJobs[part]?.cancel()
-                    activeRepeatJobs.remove(part)
-                    
-                    val pressTime = lastPressTimestamps[part] ?: 0L
-                    val elapsed = System.currentTimeMillis() - pressTime
-                    val minDuration = settings.minPressDurationMs.toLong()
-                    if (elapsed < minDuration) {
-                        val job = lifecycleScope.launch(Dispatchers.IO) {
-                            delay(minDuration - elapsed)
-                            dispatchPhysicalKey(part, keyChar, false, fromTouch)
-                            pendingReleaseJobs.remove(part)
-                        }
-                        pendingReleaseJobs[part] = job
-                    } else {
-                        dispatchPhysicalKey(part, keyChar, false, fromTouch)
-                    }
-                }
-            }
+            triggerInput(part, isPressed, fromTouch)
         }
     }
 
