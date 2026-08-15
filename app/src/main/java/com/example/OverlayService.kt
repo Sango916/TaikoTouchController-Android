@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.Bundle
@@ -118,6 +119,11 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
     // Overlay state
     private val isTouchEnabledState = mutableStateOf(false) // Initial state: Touch OFF (Pass-through)
     private val isMenuExpandedState = mutableStateOf(false)
+    private val isPlacedOnRightState = mutableStateOf(true)
+    private val isPlacedOnTopState = mutableStateOf(false)
+    private var bubblePosX = 0f
+    private var bubblePosY = 0f
+
     private val settingsState = mutableStateOf(ControllerSettings())
     private val activeInputsState = mutableStateOf(RecordActiveInputs())
 
@@ -337,9 +343,16 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
         val bubbleFlags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
 
-        val displayMetrics = resources.displayMetrics
-        val initialX = displayMetrics.widthPixels - (70 * displayMetrics.density).toInt()
-        val initialY = (displayMetrics.heightPixels * 0.25f).toInt()
+        val dm = resources.displayMetrics
+        val density = dm.density
+        val bubbleSize = (56 * density).toInt()
+        val margin = (12 * density).toInt()
+
+        bubblePosX = (dm.widthPixels - bubbleSize - margin).toFloat()
+        bubblePosY = (dm.heightPixels * 0.25f)
+
+        isPlacedOnRightState.value = bubblePosX > (dm.widthPixels / 2)
+        isPlacedOnTopState.value = bubblePosY <= (dm.heightPixels / 2)
 
         bubbleLayoutParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -349,8 +362,8 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = initialX
-            y = initialY
+            x = bubblePosX.toInt()
+            y = bubblePosY.toInt()
         }
 
         bubbleComposeView = ComposeView(this).apply {
@@ -359,11 +372,18 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
             setContent {
                 val isTouchEnabled by remember { isTouchEnabledState }
                 val isMenuExpanded by remember { isMenuExpandedState }
+                val isPlacedOnRight by remember { isPlacedOnRightState }
+                val isPlacedOnTop by remember { isPlacedOnTopState }
 
                 FloatingBubbleMenu(
                     isTouchEnabled = isTouchEnabled,
                     isMenuExpanded = isMenuExpanded,
-                    onToggleMenu = { isMenuExpandedState.value = !isMenuExpandedState.value },
+                    isPlacedOnRight = isPlacedOnRight,
+                    isPlacedOnTop = isPlacedOnTop,
+                    onToggleMenu = {
+                        isMenuExpandedState.value = !isMenuExpandedState.value
+                        applyBubbleLayout()
+                    },
                     onToggleTouch = {
                         togglePadTouch()
                     },
@@ -424,17 +444,73 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
     }
 
     private fun updateBubblePosition(dx: Float, dy: Float) {
+        bubblePosX += dx
+        bubblePosY += dy
+        applyBubbleLayout()
+    }
+
+    private fun applyBubbleLayout() {
         val params = bubbleLayoutParams ?: return
         val view = bubbleComposeView ?: return
+        val dm = resources.displayMetrics
+        val density = dm.density
 
-        params.x = (params.x + dx.toInt()).coerceIn(0, resources.displayMetrics.widthPixels - 60)
-        params.y = (params.y + dy.toInt()).coerceIn(0, resources.displayMetrics.heightPixels - 60)
+        val bubbleSize = (56 * density).toInt()
+        val menuWidth = (200 * density).toInt()
+        val menuHeight = (185 * density).toInt()
+        val margin = (10 * density).toInt()
+
+        // Clamp bubble button position so it is always fully on-screen
+        val maxBubbleX = (dm.widthPixels - bubbleSize - margin).toFloat().coerceAtLeast(margin.toFloat())
+        val maxBubbleY = (dm.heightPixels - bubbleSize - margin).toFloat().coerceAtLeast(margin.toFloat())
+
+        bubblePosX = bubblePosX.coerceIn(margin.toFloat(), maxBubbleX)
+        bubblePosY = bubblePosY.coerceIn(margin.toFloat(), maxBubbleY)
+
+        val isExpanded = isMenuExpandedState.value
+        val isRight = bubblePosX > (dm.widthPixels / 2f)
+        val isTop = bubblePosY <= (dm.heightPixels / 2f)
+
+        isPlacedOnRightState.value = isRight
+        isPlacedOnTopState.value = isTop
+
+        if (!isExpanded) {
+            params.x = bubblePosX.toInt()
+            params.y = bubblePosY.toInt()
+        } else {
+            // When expanded, the Window contains both Bubble and Menu Card
+            // Horizontal window position:
+            // If on right side, menu card expands left of bubble: window X starts so bubble is on the right
+            val targetX = if (isRight) {
+                (bubblePosX + bubbleSize - menuWidth).toInt().coerceIn(margin, dm.widthPixels - menuWidth - margin)
+            } else {
+                bubblePosX.toInt().coerceIn(margin, dm.widthPixels - menuWidth - margin)
+            }
+
+            // Vertical window position:
+            // If on top half, menu card is below bubble: window Y starts at bubblePosY
+            // If on bottom half, menu card is above bubble: window Y starts above bubble
+            val totalHeight = bubbleSize + menuHeight + (8 * density).toInt()
+            val targetY = if (isTop) {
+                bubblePosY.toInt().coerceIn(margin, dm.heightPixels - totalHeight - margin)
+            } else {
+                (bubblePosY + bubbleSize - totalHeight).toInt().coerceIn(margin, dm.heightPixels - totalHeight - margin)
+            }
+
+            params.x = targetX.coerceAtLeast(0)
+            params.y = targetY.coerceAtLeast(0)
+        }
 
         try {
             windowManager?.updateViewLayout(view, params)
         } catch (e: Exception) {
-            android.util.Log.e("OverlayService", "Failed to move bubble", e)
+            android.util.Log.e("OverlayService", "Failed to update bubble layout", e)
         }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyBubbleLayout()
     }
 
     private fun openMainApp() {
@@ -495,14 +571,18 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
 fun FloatingBubbleMenu(
     isTouchEnabled: Boolean,
     isMenuExpanded: Boolean,
+    isPlacedOnRight: Boolean,
+    isPlacedOnTop: Boolean,
     onToggleMenu: () -> Unit,
     onToggleTouch: () -> Unit,
     onOpenApp: () -> Unit,
     onCloseOverlay: () -> Unit,
     onDragDelta: (Float, Float) -> Unit
 ) {
+    val horizontalAlign = if (isPlacedOnRight) Alignment.End else Alignment.Start
+
     Column(
-        horizontalAlignment = Alignment.End,
+        horizontalAlignment = horizontalAlign,
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier
             .wrapContentSize()
@@ -513,160 +593,204 @@ fun FloatingBubbleMenu(
                 }
             }
     ) {
-        // Expanded menu popup items
-        AnimatedVisibility(
-            visible = isMenuExpanded,
-            enter = fadeIn() + scaleIn(),
-            exit = fadeOut() + scaleOut()
-        ) {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B).copy(alpha = 0.95f)),
-                shape = RoundedCornerShape(16.dp),
-                border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFFF59E0B).copy(alpha = 0.6f)),
-                elevation = CardDefaults.cardElevation(defaultElevation = 10.dp),
-                modifier = Modifier
-                    .widthIn(min = 180.dp)
-                    .padding(bottom = 4.dp)
+        // If bubble is in bottom half (not top), Menu is placed ABOVE the bubble
+        if (!isPlacedOnTop) {
+            AnimatedVisibility(
+                visible = isMenuExpanded,
+                enter = fadeIn() + scaleIn(),
+                exit = fadeOut() + scaleOut()
             ) {
-                Column(
-                    modifier = Modifier.padding(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // Header Status
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "🥁 太鼓オーバーレイ",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFFFDE68A)
-                        )
-                    }
-
-                    Divider(color = Color.White.copy(alpha = 0.15f))
-
-                    // 1. Touch Status & Toggle Button (判定ON/OFF)
-                    Button(
-                        onClick = onToggleTouch,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isTouchEnabled) Color(0xFFEF4444) else Color(0xFF10B981)
-                        ),
-                        shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(
-                                imageVector = if (isTouchEnabled) Icons.Default.TouchApp else Icons.Default.PanTool,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = if (isTouchEnabled) "判定: ON (タップ中)" else "判定: OFF (透過中)",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                        }
-                    }
-
-                    // 2. Open App Button
-                    OutlinedButton(
-                        onClick = onOpenApp,
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.4f)),
-                        shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.OpenInNew,
-                                contentDescription = null,
-                                tint = Color(0xFF93C5FD),
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = "太鼓アプリを開く",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF93C5FD)
-                            )
-                        }
-                    }
-
-                    // 3. Exit Overlay Button
-                    OutlinedButton(
-                        onClick = onCloseOverlay,
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFCA5A5)),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f)),
-                        shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = null,
-                                tint = Color(0xFFF87171),
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = "オーバーレイ終了",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFFF87171)
-                            )
-                        }
-                    }
-                }
+                BubbleMenuCard(
+                    isTouchEnabled = isTouchEnabled,
+                    onToggleTouch = onToggleTouch,
+                    onOpenApp = onOpenApp,
+                    onCloseOverlay = onCloseOverlay
+                )
             }
         }
 
-        // Main Circular Floating Bubble Trigger
-        val bubbleColor = if (isTouchEnabled) {
-            Brush.radialGradient(listOf(Color(0xFFF97316), Color(0xFFDC2626)))
-        } else {
-            Brush.radialGradient(listOf(Color(0xFF3B82F6), Color(0xFF1E293B)))
-        }
+        // Circular Floating Bubble Trigger
+        BubbleButton(
+            isTouchEnabled = isTouchEnabled,
+            onClick = onToggleMenu
+        )
 
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(52.dp)
-                .shadow(8.dp, CircleShape)
-                .clip(CircleShape)
-                .background(bubbleColor)
-                .border(2.dp, if (isTouchEnabled) Color(0xFFFDE68A) else Color(0xFF93C5FD), CircleShape)
-                .clickable { onToggleMenu() }
+        // If bubble is in top half, Menu is placed BELOW the bubble
+        if (isPlacedOnTop) {
+            AnimatedVisibility(
+                visible = isMenuExpanded,
+                enter = fadeIn() + scaleIn(),
+                exit = fadeOut() + scaleOut()
+            ) {
+                BubbleMenuCard(
+                    isTouchEnabled = isTouchEnabled,
+                    onToggleTouch = onToggleTouch,
+                    onOpenApp = onOpenApp,
+                    onCloseOverlay = onCloseOverlay
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun BubbleButton(
+    isTouchEnabled: Boolean,
+    onClick: () -> Unit
+) {
+    val bubbleColor = if (isTouchEnabled) {
+        Brush.radialGradient(listOf(Color(0xFFF97316), Color(0xFFDC2626)))
+    } else {
+        Brush.radialGradient(listOf(Color(0xFF3B82F6), Color(0xFF1E293B)))
+    }
+
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(52.dp)
+            .shadow(8.dp, CircleShape)
+            .clip(CircleShape)
+            .background(bubbleColor)
+            .border(2.dp, if (isTouchEnabled) Color(0xFFFDE68A) else Color(0xFF93C5FD), CircleShape)
+            .clickable { onClick() }
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+            Text(
+                text = if (isTouchEnabled) "🔥" else "🥁",
+                fontSize = 18.sp
+            )
+            Text(
+                text = if (isTouchEnabled) "ON" else "OFF",
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Black,
+                color = Color.White
+            )
+        }
+    }
+}
+
+@Composable
+fun BubbleMenuCard(
+    isTouchEnabled: Boolean,
+    onToggleTouch: () -> Unit,
+    onOpenApp: () -> Unit,
+    onCloseOverlay: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B).copy(alpha = 0.95f)),
+        shape = RoundedCornerShape(16.dp),
+        border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFFF59E0B).copy(alpha = 0.6f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 10.dp),
+        modifier = Modifier
+            .widthIn(min = 180.dp)
+            .padding(vertical = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Header Status
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = if (isTouchEnabled) "🔥" else "🥁",
-                    fontSize = 18.sp
+                    text = "🥁 太鼓オーバーレイ",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFFDE68A)
                 )
-                Text(
-                    text = if (isTouchEnabled) "ON" else "OFF",
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Black,
-                    color = Color.White
-                )
+            }
+
+            Divider(color = Color.White.copy(alpha = 0.15f))
+
+            // 1. Touch Status & Toggle Button (判定ON/OFF)
+            Button(
+                onClick = onToggleTouch,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isTouchEnabled) Color(0xFFEF4444) else Color(0xFF10B981)
+                ),
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isTouchEnabled) Icons.Default.TouchApp else Icons.Default.PanTool,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = if (isTouchEnabled) "判定: ON (タップ中)" else "判定: OFF (透過中)",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            }
+
+            // 2. Open App Button
+            OutlinedButton(
+                onClick = onOpenApp,
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.4f)),
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.OpenInNew,
+                        contentDescription = null,
+                        tint = Color(0xFF93C5FD),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = "太鼓アプリを開く",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF93C5FD)
+                    )
+                }
+            }
+
+            // 3. Exit Overlay Button
+            OutlinedButton(
+                onClick = onCloseOverlay,
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFCA5A5)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f)),
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = null,
+                        tint = Color(0xFFF87171),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = "オーバーレイ終了",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFF87171)
+                    )
+                }
             }
         }
     }
