@@ -1,0 +1,673 @@
+package com.example
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.graphics.PixelFormat
+import android.os.Build
+import android.os.Bundle
+import android.os.IBinder
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
+import android.view.Gravity
+import android.view.MotionEvent
+import android.view.View
+import android.view.WindowManager
+import android.widget.Toast
+import androidx.compose.animation.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
+import androidx.savedstate.SavedStateRegistry
+import androidx.savedstate.SavedStateRegistryController
+import androidx.savedstate.SavedStateRegistryOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+
+/**
+ * Service to show Taiko drum pad and a floating bubble menu as a system overlay.
+ */
+class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
+
+    companion object {
+        const val ACTION_START = "com.example.ACTION_START_OVERLAY"
+        const val ACTION_STOP = "com.example.ACTION_STOP_OVERLAY"
+        const val CHANNEL_ID = "taiko_overlay_channel"
+        const val NOTIFICATION_ID = 9021
+
+        var isOverlayRunning = false
+            private set
+
+        fun start(context: Context) {
+            val intent = Intent(context, OverlayService::class.java).apply {
+                action = ACTION_START
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        fun stop(context: Context) {
+            val intent = Intent(context, OverlayService::class.java).apply {
+                action = ACTION_STOP
+            }
+            context.startService(intent)
+        }
+    }
+
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val lifecycleRegistry = LifecycleRegistry(this)
+    private val store = ViewModelStore()
+    private val savedStateRegistryController = SavedStateRegistryController.create(this)
+
+    override val lifecycle: Lifecycle get() = lifecycleRegistry
+    override val viewModelStore: ViewModelStore get() = store
+    override val savedStateRegistry: SavedStateRegistry get() = savedStateRegistryController.savedStateRegistry
+
+    private var windowManager: WindowManager? = null
+    private var padComposeView: ComposeView? = null
+    private var bubbleComposeView: ComposeView? = null
+
+    private var padLayoutParams: WindowManager.LayoutParams? = null
+    private var bubbleLayoutParams: WindowManager.LayoutParams? = null
+
+    // Overlay state
+    private val isTouchEnabledState = mutableStateOf(false) // Initial state: Touch OFF (Pass-through)
+    private val isMenuExpandedState = mutableStateOf(false)
+    private val settingsState = mutableStateOf(ControllerSettings())
+    private val activeInputsState = mutableStateOf(RecordActiveInputs())
+
+    private var audioPlayer: TaikoAudioPlayer? = null
+    private var vibrator: Vibrator? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        savedStateRegistryController.performRestore(Bundle())
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
+
+        windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        initVibrator()
+        try {
+            audioPlayer = TaikoAudioPlayer(this)
+        } catch (e: Exception) {
+            android.util.Log.e("OverlayService", "Audio player init failed", e)
+        }
+
+        createNotificationChannel()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val action = intent?.action
+        if (action == ACTION_STOP) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        startForegroundServiceWithNotification()
+        loadSettings()
+
+        if (!isOverlayRunning) {
+            isOverlayRunning = true
+            setupOverlays()
+            lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
+            lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+            Toast.makeText(this, "太鼓オーバーレイ起動 (初期状態: 判定OFF)\nバブルメニューから判定をONにできます", Toast.LENGTH_LONG).show()
+        }
+
+        return START_STICKY
+    }
+
+    private fun loadSettings() {
+        try {
+            val mainSettings = MainActivity.instance?.getSettings()
+            if (mainSettings != null) {
+                settingsState.value = mainSettings
+                return
+            }
+            val prefs = getSharedPreferences("taiko_controller_settings", Context.MODE_PRIVATE)
+            val jsonStr = prefs.getString("settings_json", null)
+            if (!jsonStr.isNullOrEmpty()) {
+                val json = Json { ignoreUnknownKeys = true }
+                settingsState.value = json.decodeFromString(ControllerSettings.serializer(), jsonStr)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("OverlayService", "Failed to load settings in service", e)
+        }
+    }
+
+    private fun initVibrator() {
+        vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+            vibratorManager?.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+        }
+    }
+
+    private fun triggerVibration(isBigNote: Boolean = false) {
+        val settings = settingsState.value
+        if (!settings.vibration || settings.vibrationStrengthPercent <= 0) return
+        try {
+            val baseDuration = if (isBigNote) 24L else 12L
+            val strengthFactor = settings.vibrationStrengthPercent / 100f
+            val duration = (baseDuration * strengthFactor).toLong().coerceAtLeast(1L)
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val baseAmp = if (isBigNote) 255 else 180
+                val amplitude = (baseAmp * strengthFactor).toInt().coerceIn(1, 255)
+                vibrator?.vibrate(VibrationEffect.createOneShot(duration, amplitude))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator?.vibrate(duration)
+            }
+        } catch (e: Exception) {
+            // ignore
+        }
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "太鼓オーバーレイ表示",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "太鼓コントローラーのオーバーレイ表示を維持します"
+                setShowBadge(false)
+            }
+            val notificationManager = getSystemService(NotificationManager::class.java)
+            notificationManager?.createNotificationChannel(channel)
+        }
+    }
+
+    private fun startForegroundServiceWithNotification() {
+        val openAppIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+        }
+        val openPendingIntent = PendingIntent.getActivity(
+            this, 0, openAppIntent,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
+        )
+
+        val stopIntent = Intent(this, OverlayService::class.java).apply {
+            action = ACTION_STOP
+        }
+        val stopPendingIntent = PendingIntent.getService(
+            this, 1, stopIntent,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
+        )
+
+        val notification: Notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, CHANNEL_ID)
+                .setContentTitle("太鼓コントローラー (オーバーレイ表示中)")
+                .setContentText("バブルメニューから判定のON/OFFやアプリ復帰が可能です")
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentIntent(openPendingIntent)
+                .addAction(android.R.drawable.ic_menu_close_clear_cancel, "オーバーレイ終了", stopPendingIntent)
+                .setOngoing(true)
+                .build()
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this)
+                .setContentTitle("太鼓コントローラー (オーバーレイ表示中)")
+                .setContentText("バブルメニューから判定のON/OFFやアプリ復帰が可能です")
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentIntent(openPendingIntent)
+                .addAction(android.R.drawable.ic_menu_close_clear_cancel, "オーバーレイ終了", stopPendingIntent)
+                .setOngoing(true)
+                .build()
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+    }
+
+    private fun setupOverlays() {
+        val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+
+        // 1. Pad Overlay Window (Full Screen)
+        // Initial flag includes FLAG_NOT_TOUCHABLE to allow interaction with background apps
+        val padFlags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+
+        padLayoutParams = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            layoutType,
+            padFlags,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
+
+        padComposeView = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+            setupComposeOwners(this)
+            setContent {
+                val isTouchEnabled by remember { isTouchEnabledState }
+                val settings by remember { settingsState }
+                val activeInputs by remember { activeInputsState }
+
+                // Alpha is calculated from settings. When touch is disabled, drum is displayed more softly.
+                val baseAlpha = (settings.overlayAlphaPercent / 100f).coerceIn(0.1f, 1.0f)
+                val currentAlpha = if (isTouchEnabled) baseAlpha else (baseAlpha * 0.45f).coerceAtLeast(0.12f)
+
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    TaikoPad(
+                        settings = settings,
+                        activeInputs = activeInputs,
+                        onInputTriggered = { part, isPressed ->
+                            handleOverlayInput(part, isPressed)
+                        },
+                        onMultiInputTriggered = { inputsList ->
+                            handleOverlayMultiInputs(inputsList)
+                        },
+                        audioPlayer = audioPlayer,
+                        vibrateAction = { isBig -> triggerVibration(isBig) },
+                        isFullScreen = true,
+                        isOverlay = true,
+                        overlayAlpha = currentAlpha,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
+        }
+
+        // 2. Floating Bubble Overlay Window
+        val bubbleFlags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+
+        val displayMetrics = resources.displayMetrics
+        val initialX = displayMetrics.widthPixels - (70 * displayMetrics.density).toInt()
+        val initialY = (displayMetrics.heightPixels * 0.25f).toInt()
+
+        bubbleLayoutParams = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            layoutType,
+            bubbleFlags,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = initialX
+            y = initialY
+        }
+
+        bubbleComposeView = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+            setupComposeOwners(this)
+            setContent {
+                val isTouchEnabled by remember { isTouchEnabledState }
+                val isMenuExpanded by remember { isMenuExpandedState }
+
+                FloatingBubbleMenu(
+                    isTouchEnabled = isTouchEnabled,
+                    isMenuExpanded = isMenuExpanded,
+                    onToggleMenu = { isMenuExpandedState.value = !isMenuExpandedState.value },
+                    onToggleTouch = {
+                        togglePadTouch()
+                    },
+                    onOpenApp = {
+                        openMainApp()
+                    },
+                    onCloseOverlay = {
+                        stopSelf()
+                    },
+                    onDragDelta = { dx, dy ->
+                        updateBubblePosition(dx, dy)
+                    }
+                )
+            }
+        }
+
+        try {
+            windowManager?.addView(padComposeView, padLayoutParams)
+            windowManager?.addView(bubbleComposeView, bubbleLayoutParams)
+        } catch (e: Exception) {
+            android.util.Log.e("OverlayService", "Failed to add overlay views to WindowManager", e)
+            Toast.makeText(this, "オーバーレイの追加に失敗しました: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun setupComposeOwners(view: View) {
+        view.setViewTreeLifecycleOwner(this)
+        view.setViewTreeViewModelStoreOwner(this)
+        view.setViewTreeSavedStateRegistryOwner(this)
+    }
+
+    private fun togglePadTouch() {
+        val newTouchState = !isTouchEnabledState.value
+        isTouchEnabledState.value = newTouchState
+
+        val params = padLayoutParams ?: return
+        val view = padComposeView ?: return
+
+        val baseFlags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+
+        params.flags = if (newTouchState) {
+            baseFlags // Touch enabled (Taiko will receive touch events)
+        } else {
+            baseFlags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE // Touch disabled (Passed through to underlying apps)
+        }
+
+        try {
+            windowManager?.updateViewLayout(view, params)
+            if (newTouchState) {
+                Toast.makeText(this, "🥁 太鼓の判定: ON (プレイ中)", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "🛡️ 太鼓の判定: OFF (タッチ透過中)", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("OverlayService", "Failed to update pad touch flags", e)
+        }
+    }
+
+    private fun updateBubblePosition(dx: Float, dy: Float) {
+        val params = bubbleLayoutParams ?: return
+        val view = bubbleComposeView ?: return
+
+        params.x = (params.x + dx.toInt()).coerceIn(0, resources.displayMetrics.widthPixels - 60)
+        params.y = (params.y + dy.toInt()).coerceIn(0, resources.displayMetrics.heightPixels - 60)
+
+        try {
+            windowManager?.updateViewLayout(view, params)
+        } catch (e: Exception) {
+            android.util.Log.e("OverlayService", "Failed to move bubble", e)
+        }
+    }
+
+    private fun openMainApp() {
+        try {
+            val intent = Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            android.util.Log.e("OverlayService", "Failed to open main activity", e)
+        }
+    }
+
+    private fun handleOverlayInput(part: String, isPressed: Boolean) {
+        val main = MainActivity.instance
+        if (main != null) {
+            main.triggerOverlayInput(part, isPressed)
+        }
+    }
+
+    private fun handleOverlayMultiInputs(inputs: List<Pair<String, Boolean>>) {
+        val main = MainActivity.instance
+        if (main != null) {
+            main.triggerOverlayMultiInputs(inputs)
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        isOverlayRunning = false
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+        serviceScope.cancel()
+
+        try {
+            if (padComposeView != null) {
+                windowManager?.removeView(padComposeView)
+                padComposeView = null
+            }
+            if (bubbleComposeView != null) {
+                windowManager?.removeView(bubbleComposeView)
+                bubbleComposeView = null
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("OverlayService", "Error removing overlay views", e)
+        }
+
+        audioPlayer?.release()
+        audioPlayer = null
+        Toast.makeText(this, "太鼓オーバーレイを終了しました", Toast.LENGTH_SHORT).show()
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+}
+
+@Composable
+fun FloatingBubbleMenu(
+    isTouchEnabled: Boolean,
+    isMenuExpanded: Boolean,
+    onToggleMenu: () -> Unit,
+    onToggleTouch: () -> Unit,
+    onOpenApp: () -> Unit,
+    onCloseOverlay: () -> Unit,
+    onDragDelta: (Float, Float) -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.End,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .wrapContentSize()
+            .pointerInput(Unit) {
+                detectDragGestures { change, dragAmount ->
+                    change.consume()
+                    onDragDelta(dragAmount.x, dragAmount.y)
+                }
+            }
+    ) {
+        // Expanded menu popup items
+        AnimatedVisibility(
+            visible = isMenuExpanded,
+            enter = fadeIn() + scaleIn(),
+            exit = fadeOut() + scaleOut()
+        ) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B).copy(alpha = 0.95f)),
+                shape = RoundedCornerShape(16.dp),
+                border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFFF59E0B).copy(alpha = 0.6f)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 10.dp),
+                modifier = Modifier
+                    .widthIn(min = 180.dp)
+                    .padding(bottom = 4.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Header Status
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "🥁 太鼓オーバーレイ",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFFDE68A)
+                        )
+                    }
+
+                    Divider(color = Color.White.copy(alpha = 0.15f))
+
+                    // 1. Touch Status & Toggle Button (判定ON/OFF)
+                    Button(
+                        onClick = onToggleTouch,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isTouchEnabled) Color(0xFFEF4444) else Color(0xFF10B981)
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isTouchEnabled) Icons.Default.TouchApp else Icons.Default.PanTool,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = if (isTouchEnabled) "判定: ON (タップ中)" else "判定: OFF (透過中)",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                    }
+
+                    // 2. Open App Button
+                    OutlinedButton(
+                        onClick = onOpenApp,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.4f)),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.OpenInNew,
+                                contentDescription = null,
+                                tint = Color(0xFF93C5FD),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "太鼓アプリを開く",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF93C5FD)
+                            )
+                        }
+                    }
+
+                    // 3. Exit Overlay Button
+                    OutlinedButton(
+                        onClick = onCloseOverlay,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFCA5A5)),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = null,
+                                tint = Color(0xFFF87171),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "オーバーレイ終了",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFF87171)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Main Circular Floating Bubble Trigger
+        val bubbleColor = if (isTouchEnabled) {
+            Brush.radialGradient(listOf(Color(0xFFF97316), Color(0xFFDC2626)))
+        } else {
+            Brush.radialGradient(listOf(Color(0xFF3B82F6), Color(0xFF1E293B)))
+        }
+
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(52.dp)
+                .shadow(8.dp, CircleShape)
+                .clip(CircleShape)
+                .background(bubbleColor)
+                .border(2.dp, if (isTouchEnabled) Color(0xFFFDE68A) else Color(0xFF93C5FD), CircleShape)
+                .clickable { onToggleMenu() }
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = if (isTouchEnabled) "🔥" else "🥁",
+                    fontSize = 18.sp
+                )
+                Text(
+                    text = if (isTouchEnabled) "ON" else "OFF",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White
+                )
+            }
+        }
+    }
+}

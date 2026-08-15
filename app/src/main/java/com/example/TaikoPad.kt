@@ -59,6 +59,8 @@ fun TaikoPad(
     audioPlayer: TaikoAudioPlayer?,
     vibrateAction: (Boolean) -> Unit,
     isFullScreen: Boolean = false,
+    isOverlay: Boolean = false,
+    overlayAlpha: Float = 1.0f,
     modifier: Modifier = Modifier
 ) {
     var size by remember { mutableStateOf(Size.Zero) }
@@ -210,16 +212,29 @@ fun TaikoPad(
         animationSpec = tween(durationMillis = 80, easing = LinearOutSlowInEasing)
     )
 
-    val boxModifier = if (isFullScreen) {
+    val effectiveBgColor = if (isOverlay) {
+        Color.Transparent
+    } else {
+        stageBgColor
+    }
+
+    val boxModifier = if (isOverlay) {
         modifier
             .fillMaxSize()
-            .background(stageBgColor)
+            .background(Color.Transparent)
+            .graphicsLayer {
+                alpha = overlayAlpha.coerceIn(0.1f, 1.0f)
+            }
+    } else if (isFullScreen) {
+        modifier
+            .fillMaxSize()
+            .background(effectiveBgColor)
     } else {
         modifier
             .fillMaxSize()
             .clip(RoundedCornerShape(24.dp))
             .shadow(8.dp)
-            .background(stageBgColor)
+            .background(effectiveBgColor)
     }
 
     Box(
@@ -228,46 +243,48 @@ fun TaikoPad(
                 size = Size(it.size.width.toFloat(), it.size.height.toFloat())
             }
             .drawBehind {
-                // Draw Japanese Lattice (Kagome lattice triple-weave pattern)
-                val strokeWidth = 1.8f
-                
-                val hSpacing = 36.dp.toPx()
-                val wSpacing = hSpacing * 2f / sqrt(3f)
-                
-                // 1. Draw horizontal lines
-                var y = 0f
-                while (y < size.height + hSpacing) {
-                    drawLine(
-                        color = strokeColor,
-                        start = Offset(0f, y),
-                        end = Offset(size.width, y),
-                        strokeWidth = strokeWidth
-                    )
-                    y += hSpacing
-                }
-                
-                // 2. Draw dual diagonal lines to form the Kagome hexagonal mesh
-                val dx = wSpacing / 2f
-                val xRangeMin = -size.height - wSpacing
-                val xRangeMax = size.width + size.height + wSpacing
-                
-                var x = xRangeMin
-                while (x < xRangeMax) {
-                    drawLine(
-                        color = strokeColor,
-                        start = Offset(x, 0f),
-                        end = Offset(x + (size.height / hSpacing) * dx, size.height),
-                        strokeWidth = strokeWidth
-                    )
+                if (!isOverlay) {
+                    // Draw Japanese Lattice (Kagome lattice triple-weave pattern)
+                    val strokeWidth = 1.8f
                     
-                    drawLine(
-                        color = strokeColor,
-                        start = Offset(x, 0f),
-                        end = Offset(x - (size.height / hSpacing) * dx, size.height),
-                        strokeWidth = strokeWidth
-                    )
+                    val hSpacing = 36.dp.toPx()
+                    val wSpacing = hSpacing * 2f / sqrt(3f)
                     
-                    x += wSpacing
+                    // 1. Draw horizontal lines
+                    var y = 0f
+                    while (y < size.height + hSpacing) {
+                        drawLine(
+                            color = strokeColor,
+                            start = Offset(0f, y),
+                            end = Offset(size.width, y),
+                            strokeWidth = strokeWidth
+                        )
+                        y += hSpacing
+                    }
+                    
+                    // 2. Draw dual diagonal lines to form the Kagome hexagonal mesh
+                    val dx = wSpacing / 2f
+                    val xRangeMin = -size.height - wSpacing
+                    val xRangeMax = size.width + size.height + wSpacing
+                    
+                    var x = xRangeMin
+                    while (x < xRangeMax) {
+                        drawLine(
+                            color = strokeColor,
+                            start = Offset(x, 0f),
+                            end = Offset(x + (size.height / hSpacing) * dx, size.height),
+                            strokeWidth = strokeWidth
+                        )
+                        
+                        drawLine(
+                            color = strokeColor,
+                            start = Offset(x, 0f),
+                            end = Offset(x - (size.height / hSpacing) * dx, size.height),
+                            strokeWidth = strokeWidth
+                        )
+                        
+                        x += wSpacing
+                    }
                 }
             }
             .pointerInteropFilter { event ->

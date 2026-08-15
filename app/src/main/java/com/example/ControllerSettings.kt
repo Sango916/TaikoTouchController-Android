@@ -65,7 +65,10 @@ data class ControllerSettings(
     var landscapeSizePercent: Int = 100,
     var landscapeVerticalPosPercent: Int = 55,
     var landscapePreset1: DrumPreset = DrumPreset(100, 55),
-    var landscapePreset2: DrumPreset = DrumPreset(80, 50)
+    var landscapePreset2: DrumPreset = DrumPreset(80, 50),
+
+    // Overlay display settings (オーバーレイ表示用設定)
+    var overlayAlphaPercent: Int = 80 // 10% to 100%
 ) {
     val activeEmulationMode: String
         get() = when (connectionMode) {

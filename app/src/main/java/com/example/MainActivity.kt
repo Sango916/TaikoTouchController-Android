@@ -1,8 +1,10 @@
 package com.example
 
+import android.provider.Settings
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.VibrationEffect
@@ -47,6 +49,11 @@ import kotlinx.coroutines.*
 import java.util.concurrent.Executors
 
 class MainActivity : ComponentActivity() {
+
+    companion object {
+        var instance: MainActivity? = null
+            private set
+    }
 
     // Native audio synthesizer and player
     private var audioPlayer: TaikoAudioPlayer? = null
@@ -169,9 +176,59 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val showOverlayPermissionDialogState = mutableStateOf(false)
+
+    fun getSettings(): ControllerSettings = settingsState.value
+
+    fun triggerOverlayInput(part: String, isPressed: Boolean) {
+        runOnUiThread {
+            triggerInput(part, isPressed, fromTouch = true)
+        }
+    }
+
+    fun triggerOverlayMultiInputs(inputs: List<Pair<String, Boolean>>) {
+        runOnUiThread {
+            triggerMultiInputs(inputs, fromTouch = true)
+        }
+    }
+
+    private fun checkAndLaunchOverlay() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (!Settings.canDrawOverlays(this)) {
+                showOverlayPermissionDialogState.value = true
+                return
+            }
+        }
+        startOverlayService()
+    }
+
+    private fun startOverlayService() {
+        OverlayService.start(this)
+    }
+
+    private fun openOverlayPermissionSettings() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                val intent = Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:$packageName")
+                )
+                startActivity(intent)
+            } catch (e: Exception) {
+                try {
+                    val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
+                    startActivity(intent)
+                } catch (ex: Exception) {
+                    Toast.makeText(this, "オーバーレイ設定画面を開けませんでした", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
     @OptIn(ExperimentalFoundationApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        instance = this
         enableEdgeToEdge()
 
         TaikoLogManager.log("=== App Started ===")
@@ -463,6 +520,7 @@ class MainActivity : ComponentActivity() {
                                             onAdbConnect = {},
                                             onAdbPair = {},
                                             onEnterFullScreen = { isFullScreen = true },
+                                            onStartOverlay = { checkAndLaunchOverlay() },
                                             shizukuRunning = shizukuInstalledAndRunning.value,
                                             shizukuPermission = shizukuPermissionGranted.value,
                                             onRequestShizukuPermission = { requestShizukuPermission() },
@@ -520,6 +578,7 @@ class MainActivity : ComponentActivity() {
                                         onAdbConnect = {},
                                         onAdbPair = {},
                                         onEnterFullScreen = { isFullScreen = true },
+                                        onStartOverlay = { checkAndLaunchOverlay() },
                                         shizukuRunning = shizukuInstalledAndRunning.value,
                                         shizukuPermission = shizukuPermissionGranted.value,
                                         onRequestShizukuPermission = { requestShizukuPermission() },
@@ -535,6 +594,39 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         }
+                    }
+
+                    // Overlay Permission Dialog
+                    if (showOverlayPermissionDialogState.value) {
+                        AlertDialog(
+                            onDismissRequest = { showOverlayPermissionDialogState.value = false },
+                            title = {
+                                Text("🪟 「他のアプリの上に重ねて表示」の許可", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            },
+                            text = {
+                                Text(
+                                    "太鼓コントローラーを他の音ゲーやアプリの画面上にオーバーレイ表示するため、システム設定で「他のアプリの上に重ねて表示」を許可してください。\n\n許可後に再度「オーバーレイ」ボタンを押すと起動します。",
+                                    fontSize = 13.sp,
+                                    lineHeight = 18.sp
+                                )
+                            },
+                            confirmButton = {
+                                Button(
+                                    onClick = {
+                                        showOverlayPermissionDialogState.value = false
+                                        openOverlayPermissionSettings()
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
+                                ) {
+                                    Text("設定を開く", fontWeight = FontWeight.Bold)
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showOverlayPermissionDialogState.value = false }) {
+                                    Text("キャンセル")
+                                }
+                            }
+                        )
                     }
 
                     // Floating real-time log overlay at the top (drawn last to be on top of everything)
@@ -1299,11 +1391,16 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
-        stopTcpServer()
+        if (!OverlayService.isOverlayRunning) {
+            stopTcpServer()
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        if (instance === this) {
+            instance = null
+        }
         try {
             Shizuku.removeBinderReceivedListener(shizukuBinderReceivedListener)
             Shizuku.removeBinderDeadListener(shizukuBinderDeadListener)

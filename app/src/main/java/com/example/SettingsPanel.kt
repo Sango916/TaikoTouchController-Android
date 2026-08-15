@@ -49,6 +49,7 @@ fun SettingsPanel(
     onAdbConnect: () -> Unit,
     onAdbPair: () -> Unit,
     onEnterFullScreen: () -> Unit,
+    onStartOverlay: () -> Unit = {},
     shizukuRunning: Boolean = false,
     shizukuPermission: Boolean = false,
     onRequestShizukuPermission: () -> Unit = {},
@@ -162,52 +163,85 @@ fun SettingsPanel(
             }
         }
 
-        // --- 0. Display Mode (全画面表示) ---
+        // --- 0. Display Mode (全画面 & オーバーレイ表示) ---
         Card(
             colors = CardDefaults.cardColors(containerColor = Color(0xFFF9F5EB).invertIfDark(isDark)),
             border = BorderStroke(1.dp, Color(0xFF78350F).copy(alpha = 0.15f).invertIfDark(isDark)),
             shape = RoundedCornerShape(16.dp)
         ) {
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "📱 全画面コントローラー",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF78350F).invertIfDark(isDark)
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "画面いっぱいに太鼓画面を表示します",
-                        fontSize = 10.sp,
-                        color = if (isDark) Color.White else Color.Gray
-                    )
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Button(
-                    onClick = onEnterFullScreen,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706).invertIfDark(isDark)),
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Fullscreen,
-                        contentDescription = "Fullscreen",
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "全画面",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        softWrap = false
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "📱 表示モード切り替え",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF78350F).invertIfDark(isDark)
+                        )
+                        Text(
+                            text = "全画面表示または他アプリの上に重ねて表示",
+                            fontSize = 10.sp,
+                            color = if (isDark) Color.White else Color.Gray
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Fullscreen Button
+                    Button(
+                        onClick = onEnterFullScreen,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706).invertIfDark(isDark)),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Fullscreen,
+                            contentDescription = "Fullscreen",
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "📱 全画面",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            softWrap = false
+                        )
+                    }
+
+                    // Overlay Mode Button
+                    Button(
+                        onClick = onStartOverlay,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB).invertIfDark(isDark)),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Layers,
+                            contentDescription = "Overlay",
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "🪟 オーバーレイ",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            softWrap = false
+                        )
+                    }
                 }
             }
         }
@@ -1740,9 +1774,12 @@ fun TaikoSizeSettingCard(
     var sizeText by remember(currentSize) { mutableStateOf(currentSize.toString()) }
     var posText by remember(currentPos) { mutableStateOf(currentPos.toString()) }
 
+    val currentAlpha = settings.overlayAlphaPercent
+    var alphaText by remember(currentAlpha) { mutableStateOf(currentAlpha.toString()) }
+
     CollapsibleSettingCard(
-        title = "🥁 太鼓のサイズ・位置調整",
-        subtitle = if (isLandscape) "横画面 (${currentSize}% / 位置${currentPos}%)" else "縦画面 (${currentSize}% / 位置${currentPos}%)",
+        title = "🥁 太鼓のサイズ・位置・透明度調整",
+        subtitle = if (isLandscape) "横画面 (${currentSize}% / 位置${currentPos}% / 透過${currentAlpha}%)" else "縦画面 (${currentSize}% / 位置${currentPos}% / 透過${currentAlpha}%)",
         isExpanded = expandSizeCard,
         onExpandedChange = onExpandSizeCardChange,
         isDarkTheme = isDark,
@@ -1750,9 +1787,9 @@ fun TaikoSizeSettingCard(
             OutlinedButton(
                 onClick = {
                     if (isLandscape) {
-                        onSettingsChanged(settings.copy(landscapeSizePercent = 100, landscapeVerticalPosPercent = 55))
+                        onSettingsChanged(settings.copy(landscapeSizePercent = 100, landscapeVerticalPosPercent = 55, overlayAlphaPercent = 80))
                     } else {
-                        onSettingsChanged(settings.copy(portraitSizePercent = 100, portraitVerticalPosPercent = 50))
+                        onSettingsChanged(settings.copy(portraitSizePercent = 100, portraitVerticalPosPercent = 50, overlayAlphaPercent = 80))
                     }
                 },
                 border = BorderStroke(1.dp, Color(0xFF78350F).copy(alpha = 0.3f).invertIfDark(isDark)),
@@ -1945,6 +1982,99 @@ fun TaikoSizeSettingCard(
                         Text("%", fontSize = 11.sp, color = Color(0xFF78350F).invertIfDark(isDark), fontWeight = FontWeight.Bold)
                     }
                 }
+            }
+
+            // Overlay-only Transparency (不透明度) Setting
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFFEADCC9).copy(alpha = 0.3f).invertIfDark(isDark), RoundedCornerShape(10.dp))
+                    .padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "🪟 オーバーレイ時の不透明度: ${currentAlpha}%",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF78350F).invertIfDark(isDark)
+                    )
+                    Text(
+                        text = "(オーバーレイ専用)",
+                        fontSize = 10.sp,
+                        color = if (isDark) Color(0xFFFED7AA) else Color(0xFFB45309),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Button(
+                            onClick = {
+                                val newAlpha = (currentAlpha - 5).coerceIn(10, 100)
+                                onSettingsChanged(settings.copy(overlayAlphaPercent = newAlpha))
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEADCC9).invertIfDark(isDark)),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("-5%", color = Color(0xFF78350F).invertIfDark(isDark), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+
+                        Button(
+                            onClick = {
+                                val newAlpha = (currentAlpha + 5).coerceIn(10, 100)
+                                onSettingsChanged(settings.copy(overlayAlphaPercent = newAlpha))
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEADCC9).invertIfDark(isDark)),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("+5%", color = Color(0xFF78350F).invertIfDark(isDark), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("入力:", fontSize = 11.sp, color = Color(0xFF78350F).invertIfDark(isDark), fontWeight = FontWeight.Bold)
+                        OutlinedTextField(
+                            value = alphaText,
+                            onValueChange = { newValue: String ->
+                                alphaText = newValue
+                                val parsed = newValue.toIntOrNull()
+                                if (parsed != null) {
+                                    val clamped = parsed.coerceIn(10, 100)
+                                    onSettingsChanged(settings.copy(overlayAlphaPercent = clamped))
+                                }
+                            },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            modifier = Modifier.width(70.dp),
+                            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center),
+                            colors = customTextFieldColors(isDark)
+                        )
+                        Text("%", fontSize = 11.sp, color = Color(0xFF78350F).invertIfDark(isDark), fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Text(
+                    text = "※ オーバーレイ表示モード時の透け具合を設定します (通常アプリ画面には影響しません)",
+                    fontSize = 10.sp,
+                    color = if (isDark) Color.LightGray else Color(0xFF92400E)
+                )
             }
 
             Divider(color = Color(0xFF78350F).copy(alpha = 0.1f).invertIfDark(isDark))
