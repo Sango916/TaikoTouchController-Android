@@ -1340,6 +1340,7 @@ class MainActivity : ComponentActivity() {
         val oldSettings = settingsState.value
         settingsState.value = newSettings
         saveSettings(newSettings)
+        OverlayService.updateSettings(newSettings)
 
         if (oldSettings.connectionMode != newSettings.connectionMode ||
             oldSettings.anotherAndroidConnectionType != newSettings.anotherAndroidConnectionType ||

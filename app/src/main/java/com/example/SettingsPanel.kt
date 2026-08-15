@@ -1198,6 +1198,206 @@ fun SettingsPanel(
                     )
                 }
 
+                // Big Note DS Detection Area Adjustment (面とフチそれぞれの広さ設定)
+                if (settings.singleHandBigNotes) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFFEADCC9).copy(alpha = 0.3f).invertIfDark(isDark), RoundedCornerShape(10.dp))
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "🎯 大音符DS 判定の広さ設定",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF78350F).invertIfDark(isDark)
+                        )
+
+                        // 1. 面 (ドン) の大音符判定の広さ
+                        val currentDonBig = settings.donBigNotePercent
+                        var donBigText by remember(currentDonBig) { mutableStateOf(currentDonBig.toString()) }
+
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "🔴 面 (ドン) の判定範囲: ${currentDonBig}%",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF78350F).invertIfDark(isDark)
+                                )
+                                OutlinedButton(
+                                    onClick = { onSettingsChanged(settings.copy(donBigNotePercent = 40)) },
+                                    border = BorderStroke(1.dp, Color(0xFF78350F).copy(alpha = 0.3f).invertIfDark(isDark)),
+                                    shape = RoundedCornerShape(6.dp),
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(26.dp)
+                                ) {
+                                    Text("初期値 (40%)", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFF78350F).invertIfDark(isDark))
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            val newVal = (currentDonBig - 5).coerceIn(10, 100)
+                                            onSettingsChanged(settings.copy(donBigNotePercent = newVal))
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEADCC9).invertIfDark(isDark)),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                        shape = RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text("-5%", color = Color(0xFF78350F).invertIfDark(isDark), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                    }
+
+                                    Button(
+                                        onClick = {
+                                            val newVal = (currentDonBig + 5).coerceIn(10, 100)
+                                            onSettingsChanged(settings.copy(donBigNotePercent = newVal))
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEADCC9).invertIfDark(isDark)),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                        shape = RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text("+5%", color = Color(0xFF78350F).invertIfDark(isDark), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                    }
+                                }
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text("入力:", fontSize = 11.sp, color = Color(0xFF78350F).invertIfDark(isDark), fontWeight = FontWeight.Bold)
+                                    OutlinedTextField(
+                                        value = donBigText,
+                                        onValueChange = { newValue ->
+                                            donBigText = newValue
+                                            val parsed = newValue.toIntOrNull()
+                                            if (parsed != null) {
+                                                val clamped = parsed.coerceIn(10, 100)
+                                                onSettingsChanged(settings.copy(donBigNotePercent = clamped))
+                                            }
+                                        },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        singleLine = true,
+                                        modifier = Modifier.width(65.dp),
+                                        textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center),
+                                        colors = customTextFieldColors(isDark)
+                                    )
+                                    Text("%", fontSize = 11.sp, color = Color(0xFF78350F).invertIfDark(isDark), fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+
+                        Divider(color = Color(0xFF78350F).copy(alpha = 0.1f).invertIfDark(isDark))
+
+                        // 2. フチ (カッ) の大音符判定の広さ
+                        val currentKatBig = settings.katBigNotePercent
+                        var katBigText by remember(currentKatBig) { mutableStateOf(currentKatBig.toString()) }
+
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "🔵 フチ (カッ) の判定範囲: ${currentKatBig}%",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF78350F).invertIfDark(isDark)
+                                )
+                                OutlinedButton(
+                                    onClick = { onSettingsChanged(settings.copy(katBigNotePercent = 50)) },
+                                    border = BorderStroke(1.dp, Color(0xFF78350F).copy(alpha = 0.3f).invertIfDark(isDark)),
+                                    shape = RoundedCornerShape(6.dp),
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(26.dp)
+                                ) {
+                                    Text("初期値 (50%)", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFF78350F).invertIfDark(isDark))
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            val newVal = (currentKatBig - 5).coerceIn(10, 100)
+                                            onSettingsChanged(settings.copy(katBigNotePercent = newVal))
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEADCC9).invertIfDark(isDark)),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                        shape = RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text("-5%", color = Color(0xFF78350F).invertIfDark(isDark), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                    }
+
+                                    Button(
+                                        onClick = {
+                                            val newVal = (currentKatBig + 5).coerceIn(10, 100)
+                                            onSettingsChanged(settings.copy(katBigNotePercent = newVal))
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEADCC9).invertIfDark(isDark)),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                        shape = RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text("+5%", color = Color(0xFF78350F).invertIfDark(isDark), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                    }
+                                }
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text("入力:", fontSize = 11.sp, color = Color(0xFF78350F).invertIfDark(isDark), fontWeight = FontWeight.Bold)
+                                    OutlinedTextField(
+                                        value = katBigText,
+                                        onValueChange = { newValue ->
+                                            katBigText = newValue
+                                            val parsed = newValue.toIntOrNull()
+                                            if (parsed != null) {
+                                                val clamped = parsed.coerceIn(10, 100)
+                                                onSettingsChanged(settings.copy(katBigNotePercent = clamped))
+                                            }
+                                        },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        singleLine = true,
+                                        modifier = Modifier.width(65.dp),
+                                        textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center),
+                                        colors = customTextFieldColors(isDark)
+                                    )
+                                    Text("%", fontSize = 11.sp, color = Color(0xFF78350F).invertIfDark(isDark), fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+
+                        Text(
+                            text = "※ 面は中心から指定%内、フチは外周から指定%内をタップすると大音符(両手)になります",
+                            fontSize = 9.sp,
+                            color = if (isDark) Color.LightGray else Color(0xFF92400E)
+                        )
+                    }
+                }
+
                 Divider(modifier = Modifier.padding(vertical = 12.dp), color = Color(0xFF78350F).copy(alpha = 0.10f).invertIfDark(isDark))
 
                 // Log Console Toggle Switch
@@ -2118,12 +2318,16 @@ fun TaikoSizeSettingCard(
                                 if (isLandscape) {
                                     onSettingsChanged(settings.copy(
                                         landscapeSizePercent = preset1.sizePercent,
-                                        landscapeVerticalPosPercent = preset1.verticalPositionPercent
+                                        landscapeVerticalPosPercent = preset1.verticalPositionPercent,
+                                        donBigNotePercent = preset1.donBigPercent,
+                                        katBigNotePercent = preset1.katBigPercent
                                     ))
                                 } else {
                                     onSettingsChanged(settings.copy(
                                         portraitSizePercent = preset1.sizePercent,
-                                        portraitVerticalPosPercent = preset1.verticalPositionPercent
+                                        portraitVerticalPosPercent = preset1.verticalPositionPercent,
+                                        donBigNotePercent = preset1.donBigPercent,
+                                        katBigNotePercent = preset1.katBigPercent
                                     ))
                                 }
                             },
@@ -2137,11 +2341,21 @@ fun TaikoSizeSettingCard(
                             onClick = {
                                 if (isLandscape) {
                                     onSettingsChanged(settings.copy(
-                                        landscapePreset1 = DrumPreset(settings.landscapeSizePercent, settings.landscapeVerticalPosPercent)
+                                        landscapePreset1 = DrumPreset(
+                                            sizePercent = settings.landscapeSizePercent,
+                                            verticalPositionPercent = settings.landscapeVerticalPosPercent,
+                                            donBigPercent = settings.donBigNotePercent,
+                                            katBigPercent = settings.katBigNotePercent
+                                        )
                                     ))
                                 } else {
                                     onSettingsChanged(settings.copy(
-                                        portraitPreset1 = DrumPreset(settings.landscapeSizePercent, settings.landscapeVerticalPosPercent)
+                                        portraitPreset1 = DrumPreset(
+                                            sizePercent = settings.portraitSizePercent,
+                                            verticalPositionPercent = settings.portraitVerticalPosPercent,
+                                            donBigPercent = settings.donBigNotePercent,
+                                            katBigPercent = settings.katBigNotePercent
+                                        )
                                     ))
                                 }
                             },
@@ -2154,7 +2368,7 @@ fun TaikoSizeSettingCard(
                     }
                 }
                 Text(
-                    text = "サイズ: ${preset1.sizePercent}% / 位置: ${preset1.verticalPositionPercent}%",
+                    text = "サイズ: ${preset1.sizePercent}% / 位置: ${preset1.verticalPositionPercent}% / 面大音符: ${preset1.donBigPercent}% / フチ大音符: ${preset1.katBigPercent}%",
                     fontSize = 10.sp,
                     color = if (isDark) Color.White else Color.Gray,
                     maxLines = 1,
@@ -2189,12 +2403,16 @@ fun TaikoSizeSettingCard(
                                 if (isLandscape) {
                                     onSettingsChanged(settings.copy(
                                         landscapeSizePercent = preset2.sizePercent,
-                                        landscapeVerticalPosPercent = preset2.verticalPositionPercent
+                                        landscapeVerticalPosPercent = preset2.verticalPositionPercent,
+                                        donBigNotePercent = preset2.donBigPercent,
+                                        katBigNotePercent = preset2.katBigPercent
                                     ))
                                 } else {
                                     onSettingsChanged(settings.copy(
                                         portraitSizePercent = preset2.sizePercent,
-                                        portraitVerticalPosPercent = preset2.verticalPositionPercent
+                                        portraitVerticalPosPercent = preset2.verticalPositionPercent,
+                                        donBigNotePercent = preset2.donBigPercent,
+                                        katBigNotePercent = preset2.katBigPercent
                                     ))
                                 }
                             },
@@ -2208,11 +2426,21 @@ fun TaikoSizeSettingCard(
                             onClick = {
                                 if (isLandscape) {
                                     onSettingsChanged(settings.copy(
-                                        landscapePreset2 = DrumPreset(settings.landscapeSizePercent, settings.landscapeVerticalPosPercent)
+                                        landscapePreset2 = DrumPreset(
+                                            sizePercent = settings.landscapeSizePercent,
+                                            verticalPositionPercent = settings.landscapeVerticalPosPercent,
+                                            donBigPercent = settings.donBigNotePercent,
+                                            katBigPercent = settings.katBigNotePercent
+                                        )
                                     ))
                                 } else {
                                     onSettingsChanged(settings.copy(
-                                        portraitPreset2 = DrumPreset(settings.landscapeSizePercent, settings.landscapeVerticalPosPercent)
+                                        portraitPreset2 = DrumPreset(
+                                            sizePercent = settings.portraitSizePercent,
+                                            verticalPositionPercent = settings.portraitVerticalPosPercent,
+                                            donBigPercent = settings.donBigNotePercent,
+                                            katBigPercent = settings.katBigNotePercent
+                                        )
                                     ))
                                 }
                             },
@@ -2225,7 +2453,7 @@ fun TaikoSizeSettingCard(
                     }
                 }
                 Text(
-                    text = "サイズ: ${preset2.sizePercent}% / 位置: ${preset2.verticalPositionPercent}%",
+                    text = "サイズ: ${preset2.sizePercent}% / 位置: ${preset2.verticalPositionPercent}% / 面大音符: ${preset2.donBigPercent}% / フチ大音符: ${preset2.katBigPercent}%",
                     fontSize = 10.sp,
                     color = if (isDark) Color.White else Color.Gray,
                     maxLines = 1,

@@ -13,7 +13,9 @@ data class KeyConfig(
 @Serializable
 data class DrumPreset(
     var sizePercent: Int = 100,
-    var verticalPositionPercent: Int = 50
+    var verticalPositionPercent: Int = 50,
+    var donBigPercent: Int = 40, // 判定の広さ (面: 10%～100%)
+    var katBigPercent: Int = 50  // 判定の広さ (フチ: 10%～100%)
 )
 
 @Serializable
@@ -27,6 +29,11 @@ data class GamepadKeyConfig(
 @Serializable
 data class ControllerSettings(
     var singleHandBigNotes: Boolean = true,
+    // 大音符DS判定の広さ (面: 10%～100%, デフォルト40% -> 面の内側40%が大音符判定)
+    var donBigNotePercent: Int = 40,
+    // 大音符DS判定の広さ (フチ: 10%～100%, デフォルト50% -> フチの外側50%が大音符判定)
+    var katBigNotePercent: Int = 50,
+
     var soundEffects: Boolean = false,
     var vibration: Boolean = true,
     var vibrationStrengthPercent: Int = 100,
@@ -58,14 +65,14 @@ data class ControllerSettings(
     // Layout adjustment settings (Portrait / 縦画面)
     var portraitSizePercent: Int = 100,
     var portraitVerticalPosPercent: Int = 50,
-    var portraitPreset1: DrumPreset = DrumPreset(100, 50),
-    var portraitPreset2: DrumPreset = DrumPreset(85, 60),
+    var portraitPreset1: DrumPreset = DrumPreset(100, 50, 40, 50),
+    var portraitPreset2: DrumPreset = DrumPreset(85, 60, 40, 50),
 
     // Layout adjustment settings (Landscape / 横画面)
     var landscapeSizePercent: Int = 100,
     var landscapeVerticalPosPercent: Int = 55,
-    var landscapePreset1: DrumPreset = DrumPreset(100, 55),
-    var landscapePreset2: DrumPreset = DrumPreset(80, 50),
+    var landscapePreset1: DrumPreset = DrumPreset(100, 55, 40, 50),
+    var landscapePreset2: DrumPreset = DrumPreset(80, 50, 40, 50),
 
     // Overlay display settings (オーバーレイ表示用設定)
     var overlayAlphaPercent: Int = 80 // 10% to 100%
@@ -77,3 +84,4 @@ data class ControllerSettings(
             else -> shizukuEmulationMode
         }
 }
+

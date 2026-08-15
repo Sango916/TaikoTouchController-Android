@@ -106,8 +106,16 @@ fun TaikoPad(
     val centerYOffset = centerY - (height * 0.5f)
 
     // Touch boundaries ratios (based on precise percentages)
-    val donBigRadius = drumRadius * 0.2746f
     val donMaxRadius = drumRadius * 0.6864f
+    val katRimRadius = drumRadius * 0.8000f
+
+    // Dynamic Big Note DS Radii (面: 内側0~donBigRadius, フチ: 外側katBigInnerRadius~katRimRadius/drumRadius)
+    val donBigFactor = (settings.donBigNotePercent / 100f).coerceIn(0.10f, 1.0f)
+    val donBigRadius = donMaxRadius * donBigFactor
+
+    val katBigFactor = (settings.katBigNotePercent / 100f).coerceIn(0.10f, 1.0f)
+    // Kat big note zone covers the outer fraction of the Kat rim: from (donMaxRadius + (katRimRadius - donMaxRadius) * (1 - katBigFactor)) to drum outer edge
+    val katBigInnerRadius = donMaxRadius + (katRimRadius - donMaxRadius) * (1f - katBigFactor)
     val katBigRadius = drumRadius * 1.0000f
 
     // Track active parts per touch pointer ID
@@ -129,7 +137,8 @@ fun TaikoPad(
     val visualBigKat = rememberDecayedState(realTimeBigKat, 35L)
     val visualBigDon = rememberDecayedState(realTimeBigDon, 35L)
 
-    val isDark = resolveIsDarkTheme(settings.themeMode)
+    // When in overlay mode, always render the drum using light theme colors as requested
+    val isDark = if (isOverlay) false else resolveIsDarkTheme(settings.themeMode)
 
     val targetBgColor = if (isDark) {
         Color.Black
@@ -321,7 +330,7 @@ fun TaikoPad(
                             }
                         } else {
                             isDon = false
-                            if (settings.singleHandBigNotes && distance < katBigRadius) {
+                            if (settings.singleHandBigNotes && distance >= katBigInnerRadius && distance <= katBigRadius) {
                                 parts.add("leftKat")
                                 parts.add("rightKat")
                             } else {
@@ -503,6 +512,24 @@ fun TaikoPad(
                     topLeft = visualDrumTopLeft,
                     size = visualDrumSize
                 )
+
+                // 1b. If SingleHandBigNotes is enabled, draw subtle guide ring for Big Kat area (outer rim band)
+                if (settings.singleHandBigNotes) {
+                    val katBigRingColor = if (isDark) Color(0xFF38BDF8).copy(alpha = 0.20f) else Color(0xFF0284C7).copy(alpha = 0.15f)
+                    drawCircle(
+                        color = katBigRingColor,
+                        radius = (katBigInnerRadius + visualDrumRadius) / 2f,
+                        center = Offset(centerX, centerY),
+                        style = Stroke(width = (visualDrumRadius - katBigInnerRadius).coerceAtLeast(1f))
+                    )
+                    // Inner boundary dashed/subtle line for Big Kat zone
+                    drawCircle(
+                        color = if (isDark) Color(0xFF38BDF8).copy(alpha = 0.5f) else Color(0xFF0369A1).copy(alpha = 0.35f),
+                        radius = katBigInnerRadius,
+                        center = Offset(centerX, centerY),
+                        style = Stroke(width = 2f)
+                    )
+                }
 
                 // 2. Active Kat highlight background (Lights up in beautiful Cyan-Blue)
                 // These are drawn up to the full drumRadius (100%), so they protrude slightly past the visual drum rim when tapped.

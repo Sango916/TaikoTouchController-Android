@@ -78,8 +78,15 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
         const val CHANNEL_ID = "taiko_overlay_channel"
         const val NOTIFICATION_ID = 9021
 
+        var instance: OverlayService? = null
+            private set
+
         var isOverlayRunning = false
             private set
+
+        fun updateSettings(newSettings: ControllerSettings) {
+            instance?.updateSettingsInternal(newSettings)
+        }
 
         fun start(context: Context) {
             val intent = Intent(context, OverlayService::class.java).apply {
@@ -132,6 +139,7 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         savedStateRegistryController.performRestore(Bundle())
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
 
@@ -144,6 +152,10 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
         }
 
         createNotificationChannel()
+    }
+
+    private fun updateSettingsInternal(newSettings: ControllerSettings) {
+        settingsState.value = newSettings
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -307,13 +319,11 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
             setupComposeOwners(this)
             setContent {
-                val isTouchEnabled by remember { isTouchEnabledState }
                 val settings by remember { settingsState }
                 val activeInputs by remember { activeInputsState }
 
-                // Alpha is calculated from settings. When touch is disabled, drum is displayed more softly.
-                val baseAlpha = (settings.overlayAlphaPercent / 100f).coerceIn(0.1f, 1.0f)
-                val currentAlpha = if (isTouchEnabled) baseAlpha else (baseAlpha * 0.45f).coerceAtLeast(0.12f)
+                // Constant overlay transparency regardless of touch enabled/disabled state
+                val currentAlpha = (settings.overlayAlphaPercent / 100f).coerceIn(0.1f, 1.0f)
 
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -456,9 +466,9 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
         val density = dm.density
 
         val bubbleSize = (56 * density).toInt()
-        val menuWidth = (200 * density).toInt()
-        val menuHeight = (185 * density).toInt()
-        val margin = (10 * density).toInt()
+        val menuWidth = (210 * density).toInt()
+        val menuHeight = (195 * density).toInt()
+        val margin = (12 * density).toInt()
 
         // Clamp bubble button position so it is always fully on-screen
         val maxBubbleX = (dm.widthPixels - bubbleSize - margin).toFloat().coerceAtLeast(margin.toFloat())
@@ -540,6 +550,9 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
 
     override fun onDestroy() {
         super.onDestroy()
+        if (instance === this) {
+            instance = null
+        }
         isOverlayRunning = false
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
