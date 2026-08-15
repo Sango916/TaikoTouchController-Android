@@ -111,18 +111,18 @@ fun TaikoPad(
     val lastTriggerTimeMap = remember { mutableMapOf<String, Long>() }
 
     // Decay visual inputs slightly to prevent flickering during rapid rolling (連打)
-    val visualLeftKat = rememberDecayedState(activeInputs.leftKat, 100L)
-    val visualRightKat = rememberDecayedState(activeInputs.rightKat, 100L)
-    val visualLeftDon = rememberDecayedState(activeInputs.leftDon, 100L)
-    val visualRightDon = rememberDecayedState(activeInputs.rightDon, 100L)
+    val visualLeftKat = rememberDecayedState(activeInputs.leftKat, 35L)
+    val visualRightKat = rememberDecayedState(activeInputs.rightKat, 35L)
+    val visualLeftDon = rememberDecayedState(activeInputs.leftDon, 35L)
+    val visualRightDon = rememberDecayedState(activeInputs.rightDon, 35L)
 
     // Track actual real-time simultaneous presses (Big Notes)
     val realTimeBigKat = activeInputs.leftKat && activeInputs.rightKat
     val realTimeBigDon = activeInputs.leftDon && activeInputs.rightDon
 
     // Decay the big note states as well so they fade out smoothly during a true big note hit
-    val visualBigKat = rememberDecayedState(realTimeBigKat, 100L)
-    val visualBigDon = rememberDecayedState(realTimeBigDon, 100L)
+    val visualBigKat = rememberDecayedState(realTimeBigKat, 35L)
+    val visualBigDon = rememberDecayedState(realTimeBigDon, 35L)
 
     val isDark = resolveIsDarkTheme(settings.themeMode)
 

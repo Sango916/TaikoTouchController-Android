@@ -71,6 +71,9 @@ class MainActivity : ComponentActivity() {
     // Active release jobs to prevent early releases on fast multi-tap overlaps
     private val pendingReleaseJobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
 
+    // Track physically held parts on this device to prevent race conditions during rapid rolling
+    private val physicallyHeldParts = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
     // UI state holder
     private var settingsState = mutableStateOf(ControllerSettings())
     private var wsConnectedState = mutableStateOf(false)
@@ -762,8 +765,37 @@ class MainActivity : ComponentActivity() {
         }
 
         if (parts.isNotEmpty()) {
+            // 1. Update visual feedback in receiver UI
             runOnUiThread {
-                triggerMultiInputs(parts.map { it to isPressed }, fromTouch = false)
+                parts.forEach { part ->
+                    updateActiveInputsState(part, isPressed)
+                }
+            }
+
+            // 2. Direct local Shizuku/Uinput key injection
+            val items = parts.mapNotNull { part ->
+                val keyChar = if (emulationMode == "gamepad") {
+                    when (part) {
+                        "leftKat" -> settingsCur.gamepadKeyConfig.leftKat
+                        "leftDon" -> settingsCur.gamepadKeyConfig.leftDon
+                        "rightDon" -> settingsCur.gamepadKeyConfig.rightDon
+                        "rightKat" -> settingsCur.gamepadKeyConfig.rightKat
+                        else -> ""
+                    }
+                } else {
+                    when (part) {
+                        "leftKat" -> settingsCur.keyConfig.leftKat
+                        "leftDon" -> settingsCur.keyConfig.leftDon
+                        "rightDon" -> settingsCur.keyConfig.rightDon
+                        "rightKat" -> settingsCur.keyConfig.rightKat
+                        else -> ""
+                    }
+                }
+                if (keyChar.isNotEmpty()) part to keyChar else null
+            }
+
+            if (items.isNotEmpty()) {
+                adbClient?.sendMultiKeyEvents(items, isPressed, settingsCur.simultaneousGroupingMs)
             }
         }
     }
@@ -927,31 +959,24 @@ class MainActivity : ComponentActivity() {
             activeRepeatJobs.remove(part)
 
             val pendingJob = pendingReleaseJobs[part]
-            val isCurrentlyActive = when (part) {
-                "leftKat" -> activeInputsState.value.leftKat
-                "leftDon" -> activeInputsState.value.leftDon
-                "rightDon" -> activeInputsState.value.rightDon
-                "rightKat" -> activeInputsState.value.rightKat
-                else -> false
+            if (pendingJob != null) {
+                pendingJob.cancel()
+                pendingReleaseJobs.remove(part)
             }
 
-            if (pendingJob != null || isCurrentlyActive) {
-                pendingJob?.cancel()
-                pendingReleaseJobs.remove(part)
-                TaikoLogManager.log("Touch Down Overlap: $part -> key=$keyChar. Canceling pending release, forcing release/re-press!")
-                // Force an immediate release event, then repress after 5ms so the game registers separate hits
+            val wasPhysicallyHeld = physicallyHeldParts.contains(part)
+            if (wasPhysicallyHeld || pendingJob != null) {
+                TaikoLogManager.log("Touch Overlap: $part -> key=$keyChar. Instant release and re-press!")
+                // Force an immediate synchronous release event, followed by press so the game registers separate hits without coroutine race
                 dispatchPhysicalKey(part, keyChar, false, fromTouch)
-                lifecycleScope.launch(Dispatchers.IO) {
-                    delay(5)
-                    dispatchPhysicalKey(part, keyChar, true, fromTouch)
-                }
+                dispatchPhysicalKey(part, keyChar, true, fromTouch)
             } else {
                 TaikoLogManager.log("Touch Down: $part -> key=$keyChar")
                 dispatchPhysicalKey(part, keyChar, true, fromTouch)
             }
+            physicallyHeldParts.add(part)
             
             // Handle repeat logic: Only repeat rapidly when Turbo (Auto-Repeat) is explicitly enabled.
-            // For standard keyboard/gamepad behavior, we send a single Down event and stay pressed down.
             if (settings.isTurboEnabled) {
                 TaikoLogManager.log("Turbo Enabled: auto-repeating $part every ${settings.turboIntervalMs}ms")
                 activeRepeatJobs[part] = lifecycleScope.launch(Dispatchers.IO) {
@@ -959,7 +984,7 @@ class MainActivity : ComponentActivity() {
                     while (isActive) {
                         delay(interval)
                         dispatchPhysicalKey(part, keyChar, false, fromTouch)
-                        delay(10L)
+                        delay(5L)
                         dispatchPhysicalKey(part, keyChar, true, fromTouch)
                     }
                 }
@@ -974,17 +999,19 @@ class MainActivity : ComponentActivity() {
             val elapsed = System.currentTimeMillis() - pressTime
             val minDuration = settings.minPressDurationMs.toLong()
             TaikoLogManager.log("Touch Up: $part (actual hold: ${elapsed}ms)")
-            if (elapsed < minDuration) {
+            if (elapsed < minDuration && minDuration > 0) {
                 val delayMs = minDuration - elapsed
                 TaikoLogManager.log("Touch Up Hold: $part hold was ${elapsed}ms < minPress ${minDuration}ms. Delaying release by ${delayMs}ms to ensure registration.")
                 val job = lifecycleScope.launch(Dispatchers.IO) {
                     delay(delayMs)
                     dispatchPhysicalKey(part, keyChar, false, fromTouch)
+                    physicallyHeldParts.remove(part)
                     pendingReleaseJobs.remove(part)
                 }
                 pendingReleaseJobs[part] = job
             } else {
                 dispatchPhysicalKey(part, keyChar, false, fromTouch)
+                physicallyHeldParts.remove(part)
             }
         }
     }
@@ -1006,14 +1033,28 @@ class MainActivity : ComponentActivity() {
             val actionIsPressed = inputs[0].second
 
             if (isAllSameAction) {
+                val parts = inputs.map { it.first }
+                if (actionIsPressed) {
+                    val now = System.currentTimeMillis()
+                    parts.forEach { part ->
+                        lastPressTimestamps[part] = now
+                        activeRepeatJobs[part]?.cancel()
+                        activeRepeatJobs.remove(part)
+                        pendingReleaseJobs[part]?.cancel()
+                        pendingReleaseJobs.remove(part)
+                        physicallyHeldParts.add(part)
+                    }
+                } else {
+                    parts.forEach { part ->
+                        activeRepeatJobs[part]?.cancel()
+                        activeRepeatJobs.remove(part)
+                        physicallyHeldParts.remove(part)
+                    }
+                }
+
                 if (settings.connectionMode == "another_android" && settings.anotherAndroidRole == "sender") {
-                    val parts = inputs.map { it.first }
                     if (parts.isNotEmpty()) {
                         remoteSender?.sendMultiKeyEvents(parts, actionIsPressed)
-                        if (actionIsPressed) {
-                            val now = System.currentTimeMillis()
-                            parts.forEach { lastPressTimestamps[it] = now }
-                        }
                         return
                     }
                 } else if (settings.connectionMode == "usb-wired") {

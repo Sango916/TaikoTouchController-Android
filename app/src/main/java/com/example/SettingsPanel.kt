@@ -510,8 +510,8 @@ fun SettingsPanel(
                                         color = if (isDark) Color(0xFFFDE047) else Color(0xFFB45309)
                                     )
                                     Text(
-                                        text = "① 5GHz / 6GHz 帯のWi-Fiルーターを使用する (2.4GHzは干渉が多く遅延が発生します)\n" +
-                                               "② 受信側 (ゲーム側) で「Wi-Fiテザリング（アクセスポイント）」をONにして送信側と直接接続すると、家庭内ルーターを経由せず極小遅延でプレイできます",
+                                        text = "① 受信側 (ゲーム側) または送信側で「Wi-Fiテザリング（アクセスポイント）」をONにして2台を直接接続すると、外部ルーターを経由せず極小遅延でプレイできます\n" +
+                                               "② 家庭内Wi-Fi利用時は、ルーターの近くで接続してください",
                                         fontSize = 9.5.sp,
                                         color = if (isDark) Color(0xFFCBD5E1) else Color(0xFF78350F),
                                         lineHeight = 13.sp

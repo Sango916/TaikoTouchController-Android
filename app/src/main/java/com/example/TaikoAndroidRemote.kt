@@ -20,14 +20,12 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
 
 object NetworkUtils {
-    fun getLocalIpAddress(): String {
-        return getAllLocalIpAddresses().firstOrNull() ?: "127.0.0.1"
-    }
-
     data class NetworkInterfaceIp(
         val name: String,
+        val displayName: String,
         val ip: String,
-        val isWired: Boolean
+        val isWired: Boolean,
+        val isHotspot: Boolean
     )
 
     fun getDetailedLocalIpAddresses(): List<NetworkInterfaceIp> {
@@ -40,12 +38,24 @@ object NetworkUtils {
                 val isWired = nameLower.contains("rndis") || nameLower.contains("usb") ||
                               nameLower.contains("eth") || nameLower.contains("ncm") ||
                               nameLower.contains("tun")
+                val isHotspot = nameLower.contains("ap") || nameLower.contains("softap") ||
+                                nameLower.contains("hotspot") || nameLower.contains("tether") ||
+                                nameLower.contains("p2p")
+
+                val displayName = when {
+                    isHotspot -> "テザリング / AP (${intf.name})"
+                    nameLower.contains("wlan") || nameLower.contains("wifi") -> "Wi-Fi (${intf.name})"
+                    nameLower.contains("rndis") || nameLower.contains("usb") -> "USB テザリング (${intf.name})"
+                    nameLower.contains("eth") -> "有線 LAN (${intf.name})"
+                    else -> intf.name
+                }
+
                 val addrs = Collections.list(intf.inetAddresses)
                 for (addr in addrs) {
                     if (!addr.isLoopbackAddress) {
                         val sAddr = addr.hostAddress
                         if (sAddr != null && sAddr.indexOf(':') < 0) { // IPv4
-                            list.add(NetworkInterfaceIp(intf.name, sAddr, isWired))
+                            list.add(NetworkInterfaceIp(intf.name, displayName, sAddr, isWired, isHotspot))
                         }
                     }
                 }
@@ -53,11 +63,27 @@ object NetworkUtils {
         } catch (e: Exception) {
             Log.e("NetworkUtils", "Error getting detailed IP addresses", e)
         }
-        return list
+
+        // Sort priority: 1) Wi-Fi / Hotspot private LAN IPs, 2) USB / Wired LAN IPs, 3) Others
+        return list.sortedWith(compareBy<NetworkInterfaceIp> {
+            when {
+                it.isHotspot -> 0
+                it.name.lowercase().contains("wlan") -> 1
+                it.isWired -> 2
+                it.ip.startsWith("192.168.") -> 3
+                it.ip.startsWith("10.") -> 4
+                it.ip.startsWith("172.") -> 5
+                else -> 6
+            }
+        })
     }
 
     fun getAllLocalIpAddresses(): List<String> {
         return getDetailedLocalIpAddresses().map { it.ip }
+    }
+
+    fun getLocalIpAddress(): String {
+        return getAllLocalIpAddresses().firstOrNull() ?: "127.0.0.1"
     }
 
     fun getWiredLocalIpAddresses(): List<String> {
@@ -115,13 +141,15 @@ class TaikoAndroidRemoteSender {
                 val isWired = connectionType == "wired"
                 val priorityIps = LinkedHashSet<String>()
 
-                // Common Android Hotspot / Tethering / P2P gateway & client addresses
+                // 1. Common Android Hotspot / Tethering gateway & AP addresses
                 priorityIps.add("192.168.43.1")   // Android Wi-Fi Hotspot standard AP IP
                 priorityIps.add("192.168.49.1")   // Wi-Fi Direct P2P Group Owner IP
                 priorityIps.add("192.168.42.129") // Android USB Tethering client IP
                 priorityIps.add("192.168.42.1")   // Android USB Tethering host IP
                 priorityIps.add("192.168.44.1")
                 priorityIps.add("192.168.50.1")
+                priorityIps.add("192.168.137.1")
+                priorityIps.add("172.20.10.1")
                 priorityIps.add("10.0.2.2")
                 priorityIps.add("127.0.0.1")
 
@@ -143,14 +171,15 @@ class TaikoAndroidRemoteSender {
                     }
                 }
 
-                // 1. Fast probe priority IPs (150ms timeout)
+                // 1. Fast probe priority IPs (150ms timeout) using CompletionService
                 if (priorityIps.isNotEmpty()) {
-                    val priorityPool = Executors.newFixedThreadPool(minOf(32, priorityIps.size))
-                    val priorityFutures = priorityIps.map { ip ->
-                        priorityPool.submit<String?> {
+                    val pool = Executors.newFixedThreadPool(minOf(32, priorityIps.size))
+                    val completionService = java.util.concurrent.ExecutorCompletionService<String?>(pool)
+                    for (ip in priorityIps) {
+                        completionService.submit {
                             try {
                                 val s = Socket()
-                                s.connect(InetSocketAddress(ip, targetPort), 150)
+                                s.connect(InetSocketAddress(ip, targetPort), 120)
                                 s.close()
                                 ip
                             } catch (e: Exception) {
@@ -159,24 +188,33 @@ class TaikoAndroidRemoteSender {
                         }
                     }
 
-                    for (future in priorityFutures) {
-                        val ip = try { future.get() } catch (e: Exception) { null }
-                        if (ip != null) {
-                            foundIp = ip
+                    var checked = 0
+                    while (checked < priorityIps.size) {
+                        val completedFuture = try {
+                            completionService.poll(150, java.util.concurrent.TimeUnit.MILLISECONDS)
+                        } catch (e: Exception) { null }
+                        if (completedFuture != null) {
+                            checked++
+                            val res = try { completedFuture.get() } catch (e: Exception) { null }
+                            if (res != null) {
+                                foundIp = res
+                                break
+                            }
+                        } else {
                             break
                         }
                     }
-                    priorityPool.shutdownNow()
+                    pool.shutdownNow()
                 }
 
-                // 2. Try UDP Broadcast Discovery (if Wi-Fi multicast is allowed by router)
+                // 2. Try UDP Broadcast Discovery (if router allows broadcast)
                 if (foundIp == null && !isWired) {
                     try {
                         val udpSocket = DatagramSocket(null).apply {
                             reuseAddress = true
                             bind(InetSocketAddress(0))
                         }
-                        udpSocket.soTimeout = 300
+                        udpSocket.soTimeout = 250
                         udpSocket.broadcast = true
                         val reqMsg = "DISCOVER_TAIKO_RECEIVER".toByteArray(Charsets.UTF_8)
                         val packet = DatagramPacket(
@@ -200,12 +238,13 @@ class TaikoAndroidRemoteSender {
                     }
                 }
 
-                // 3. Fallback to Full Subnet Fast Parallel Scan
+                // 3. Fallback to Full Subnet Fast Parallel Scan via ExecutorCompletionService
                 if (foundIp == null) {
                     val candidateIps = LinkedHashSet<String>()
-                    // Ensure tethering subnet is included
+                    // Ensure standard hotspot / tethering subnets are always tested
                     for (i in 1..254) {
                         candidateIps.add("192.168.43.$i")
+                        candidateIps.add("192.168.42.$i")
                     }
 
                     for (localIp in localIps) {
@@ -222,12 +261,14 @@ class TaikoAndroidRemoteSender {
                     }
 
                     if (candidateIps.isNotEmpty()) {
-                        val pool = Executors.newFixedThreadPool(128)
-                        val futures = candidateIps.map { ip ->
-                            pool.submit<String?> {
+                        val candidateList = candidateIps.toList()
+                        val pool = Executors.newFixedThreadPool(64)
+                        val completionService = java.util.concurrent.ExecutorCompletionService<String?>(pool)
+                        for (ip in candidateList) {
+                            completionService.submit {
                                 try {
                                     val s = Socket()
-                                    s.connect(InetSocketAddress(ip, targetPort), 200)
+                                    s.connect(InetSocketAddress(ip, targetPort), 180)
                                     s.close()
                                     ip
                                 } catch (e: Exception) {
@@ -236,11 +277,21 @@ class TaikoAndroidRemoteSender {
                             }
                         }
 
-                        for (future in futures) {
-                            val ip = try { future.get() } catch (e: Exception) { null }
-                            if (ip != null) {
-                                foundIp = ip
-                                break
+                        var finishedCount = 0
+                        val totalTasks = candidateList.size
+                        while (finishedCount < totalTasks) {
+                            val completedFuture = try {
+                                completionService.poll(220, java.util.concurrent.TimeUnit.MILLISECONDS)
+                            } catch (e: Exception) { null }
+                            if (completedFuture != null) {
+                                finishedCount++
+                                val res = try { completedFuture.get() } catch (e: Exception) { null }
+                                if (res != null) {
+                                    foundIp = res
+                                    break
+                                }
+                            } else {
+                                break // Timeout
                             }
                         }
                         pool.shutdownNow()
@@ -313,6 +364,7 @@ class TaikoAndroidRemoteSender {
         udpSocket = DatagramSocket(null).apply {
             reuseAddress = true
             try { trafficClass = 0x10 } catch (_: Exception) {}
+            bind(InetSocketAddress(0))
         }
 
         // 2. Setup TCP Socket
@@ -433,7 +485,7 @@ class TaikoAndroidRemoteSender {
         val bytes = payloadStr.toByteArray(Charsets.UTF_8)
 
         if (udpSendExecutor.isShutdown || udpSendExecutor.isTerminated) {
-            udpSendExecutor = Executors.newCachedThreadPool()
+            udpSendExecutor = Executors.newSingleThreadExecutor()
         }
 
         udpSendExecutor.execute {
