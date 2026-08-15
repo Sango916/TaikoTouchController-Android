@@ -77,18 +77,21 @@ fun TaikoPad(
         }
     }
 
-    // Dimensions
-    val configuration = LocalConfiguration.current
-    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    // Dimensions: Determine orientation & aspect ratio from the actual container size (supporting split-screen)
+    val containerWidth = size.width
+    val containerHeight = size.height
+    val isLandscape = if (containerWidth > 0f && containerHeight > 0f) {
+        containerWidth >= containerHeight
+    } else {
+        val configuration = LocalConfiguration.current
+        configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    }
 
     val customSizePercent = if (isLandscape) settings.landscapeSizePercent else settings.portraitSizePercent
     val customVerticalPosPercent = if (isLandscape) settings.landscapeVerticalPosPercent else settings.portraitVerticalPosPercent
 
-    val baseScale = if (isLandscape) {
-        if (isFullScreen) 1.00f else 0.96f
-    } else {
-        0.90f
-    }
+    // Base scale is consistent (1.0f in landscape, 0.90f in portrait) across fullscreen and preview
+    val baseScale = if (isLandscape) 1.00f else 0.90f
     val drumScale = baseScale * (customSizePercent / 100f)
 
     val width = size.width

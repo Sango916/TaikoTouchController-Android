@@ -16,6 +16,10 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -161,6 +165,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @OptIn(ExperimentalFoundationApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -243,6 +248,7 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
+            val context = androidx.compose.ui.platform.LocalContext.current
             val settings by settingsState
             val wsConnected by wsConnectedState
             val peerCount by peerCountState
@@ -266,6 +272,7 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(isFullScreen) {
                 if (isFullScreen) {
                     window.addFlags(android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+                    Toast.makeText(context, "全画面モード: 終了ボタンを長押しで閉じます", Toast.LENGTH_SHORT).show()
                 } else {
                     window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
                 }
@@ -295,21 +302,39 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier.fillMaxSize()
                             )
 
-                            // Overlaid exit button in a semi-transparent container
-                            IconButton(
-                                onClick = { isFullScreen = false },
-                                colors = IconButtonDefaults.iconButtonColors(
-                                    containerColor = Color.Black.copy(alpha = 0.5f),
-                                    contentColor = Color.White
-                                ),
+                            // Overlaid exit button with long-press protection against accidental taps (普通のタップでは閉じず右カッとなる)
+                            Box(
+                                contentAlignment = Alignment.Center,
                                 modifier = Modifier
                                     .align(Alignment.TopEnd)
                                     .padding(16.dp)
-                                    .size(40.dp)
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.5f))
+                                    .combinedClickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = rememberRipple(bounded = true, color = Color.White),
+                                        onClick = {
+                                            // Normal tap triggers Right Kat (右カッ)
+                                            triggerInput("rightKat", true)
+                                            if (settings.soundEffects && audioPlayer != null) {
+                                                audioPlayer?.playKat(settings.soundVolume)
+                                            }
+                                            triggerVibration(false)
+                                            lifecycleScope.launch {
+                                                delay(40)
+                                                triggerInput("rightKat", false)
+                                            }
+                                        },
+                                        onLongClick = {
+                                            isFullScreen = false
+                                        }
+                                    )
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.FullscreenExit,
-                                    contentDescription = "Exit Fullscreen",
+                                    contentDescription = "長押しで全画面を終了",
+                                    tint = Color.White,
                                     modifier = Modifier.size(24.dp)
                                 )
                             }

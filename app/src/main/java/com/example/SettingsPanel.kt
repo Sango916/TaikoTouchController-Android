@@ -495,30 +495,6 @@ fun SettingsPanel(
                                 )
                             }
 
-                            // Wireless Speedup Tip Card
-                            Card(
-                                shape = RoundedCornerShape(8.dp),
-                                colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF1E293B) else Color(0xFFFFFBEB)),
-                                border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFFCD34D)),
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                            ) {
-                                Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                    Text(
-                                        text = "🚀 無線 (Wi-Fi) の遅延・抜けを最小化するコツ",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isDark) Color(0xFFFDE047) else Color(0xFFB45309)
-                                    )
-                                    Text(
-                                        text = "① 受信側 (ゲーム側) または送信側で「Wi-Fiテザリング（アクセスポイント）」をONにして2台を直接接続すると、外部ルーターを経由せず極小遅延でプレイできます\n" +
-                                               "② 家庭内Wi-Fi利用時は、ルーターの近くで接続してください",
-                                        fontSize = 9.5.sp,
-                                        color = if (isDark) Color(0xFFCBD5E1) else Color(0xFF78350F),
-                                        lineHeight = 13.sp
-                                    )
-                                }
-                            }
-
                             // Toggle for Manual Connection Settings
                             TextButton(
                                 onClick = { showManualInput = !showManualInput },
@@ -601,6 +577,30 @@ fun SettingsPanel(
                                     fontWeight = FontWeight.Bold,
                                     color = statusTextColor
                                 )
+                            }
+
+                            // Wireless Speedup Tip Card
+                            Card(
+                                shape = RoundedCornerShape(8.dp),
+                                colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF1E293B) else Color(0xFFFFFBEB)),
+                                border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFFCD34D)),
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Text(
+                                        text = "🚀 無線 (Wi-Fi) の遅延・抜けを最小化するコツ",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isDark) Color(0xFFFDE047) else Color(0xFFB45309)
+                                    )
+                                    Text(
+                                        text = "① 受信側 (ゲーム側) または送信側で「Wi-Fiテザリング（アクセスポイント）」をONにして2台を直接接続すると、外部ルーターを経由せず極小遅延でプレイできます\n" +
+                                               "② 家庭内Wi-Fi利用時は、ルーターの近くで接続してください",
+                                        fontSize = 9.5.sp,
+                                        color = if (isDark) Color(0xFFCBD5E1) else Color(0xFF78350F),
+                                        lineHeight = 13.sp
+                                    )
+                                }
                             }
                         } else {
                             // WIRED SENDER
@@ -980,7 +980,16 @@ fun SettingsPanel(
         }
 
 
-        // --- 3. Drum Settings Options ---
+        // --- Taiko Size & Position Adjustment Card (太鼓の位置・サイズ設定) ---
+        TaikoSizeSettingCard(
+            settings = settings,
+            onSettingsChanged = onSettingsChanged,
+            expandSizeCard = expandSizeCard,
+            onExpandSizeCardChange = { expandSizeCard = it },
+            isDark = isDark
+        )
+
+        // --- 3. Drum Settings Options (太鼓の設定) ---
         CollapsibleSettingCard(
             title = "🥁 太鼓の設定 (振動・大音符・ログ)",
             subtitle = "バイブ: ${if (settings.vibration) "${settings.vibrationStrengthPercent}%" else "OFF"} / 大音符DS: ${if (settings.singleHandBigNotes) "ON" else "OFF"}",
@@ -1190,15 +1199,6 @@ fun SettingsPanel(
                 }
             }
         }
-
-        // --- Taiko Size & Position Adjustment Card ---
-        TaikoSizeSettingCard(
-            settings = settings,
-            onSettingsChanged = onSettingsChanged,
-            expandSizeCard = expandSizeCard,
-            onExpandSizeCardChange = { expandSizeCard = it },
-            isDark = isDark
-        )
 
         // --- 4. Custom Key Configuration Card ---
         val activeEmulationMode = settings.activeEmulationMode
