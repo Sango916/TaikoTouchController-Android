@@ -1112,19 +1112,25 @@ class MainActivity : ComponentActivity() {
 
             val wasPhysicallyHeld = physicallyHeldParts.contains(part)
             if (wasPhysicallyHeld || pendingJob != null) {
-                TaikoLogManager.log("Touch Overlap: $part -> key=$keyChar. Instant release and re-press!")
+                if (settings.showLogConsole) {
+                    TaikoLogManager.log("Touch Overlap: $part -> key=$keyChar. Instant release and re-press!")
+                }
                 // Force an immediate synchronous release event, followed by press so the game registers separate hits without coroutine race
                 dispatchPhysicalKey(part, keyChar, false, fromTouch)
                 dispatchPhysicalKey(part, keyChar, true, fromTouch)
             } else {
-                TaikoLogManager.log("Touch Down: $part -> key=$keyChar")
+                if (settings.showLogConsole) {
+                    TaikoLogManager.log("Touch Down: $part -> key=$keyChar")
+                }
                 dispatchPhysicalKey(part, keyChar, true, fromTouch)
             }
             physicallyHeldParts.add(part)
             
             // Handle repeat logic: Only repeat rapidly when Turbo (Auto-Repeat) is explicitly enabled.
             if (settings.isTurboEnabled) {
-                TaikoLogManager.log("Turbo Enabled: auto-repeating $part every ${settings.turboIntervalMs}ms")
+                if (settings.showLogConsole) {
+                    TaikoLogManager.log("Turbo Enabled: auto-repeating $part every ${settings.turboIntervalMs}ms")
+                }
                 activeRepeatJobs[part] = lifecycleScope.launch(Dispatchers.IO) {
                     val interval = settings.turboIntervalMs.toLong()
                     while (isActive) {
@@ -1134,8 +1140,6 @@ class MainActivity : ComponentActivity() {
                         dispatchPhysicalKey(part, keyChar, true, fromTouch)
                     }
                 }
-            } else {
-                TaikoLogManager.log("Standard Press & Hold Mode: single press held down for $part")
             }
         } else {
             activeRepeatJobs[part]?.cancel()
@@ -1144,10 +1148,14 @@ class MainActivity : ComponentActivity() {
             val pressTime = lastPressTimestamps[part] ?: 0L
             val elapsed = System.currentTimeMillis() - pressTime
             val minDuration = settings.minPressDurationMs.toLong()
-            TaikoLogManager.log("Touch Up: $part (actual hold: ${elapsed}ms)")
+            if (settings.showLogConsole) {
+                TaikoLogManager.log("Touch Up: $part (actual hold: ${elapsed}ms)")
+            }
             if (elapsed < minDuration && minDuration > 0) {
                 val delayMs = minDuration - elapsed
-                TaikoLogManager.log("Touch Up Hold: $part hold was ${elapsed}ms < minPress ${minDuration}ms. Delaying release by ${delayMs}ms to ensure registration.")
+                if (settings.showLogConsole) {
+                    TaikoLogManager.log("Touch Up Hold: $part hold was ${elapsed}ms < minPress ${minDuration}ms. Delaying release by ${delayMs}ms to ensure registration.")
+                }
                 val job = lifecycleScope.launch(Dispatchers.IO) {
                     delay(delayMs)
                     dispatchPhysicalKey(part, keyChar, false, fromTouch)

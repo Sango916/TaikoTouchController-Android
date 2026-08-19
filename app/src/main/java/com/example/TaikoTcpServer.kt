@@ -119,7 +119,11 @@ class TaikoTcpServer(
     fun sendMultiKeyEvents(keys: List<String>, isPressed: Boolean) {
         if (clients.isEmpty() || keys.isEmpty() || sendExecutor.isShutdown) return
         val action = if (isPressed) "DOWN" else "UP"
-        val message = "$action ${keys.joinToString(" ")}\n"
+        val message = buildString {
+            keys.forEach { key ->
+                append(action).append(" ").append(key).append("\n")
+            }
+        }
 
         sendExecutor.execute {
             val iterator = clients.entries.iterator()

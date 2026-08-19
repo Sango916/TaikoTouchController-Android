@@ -70,8 +70,8 @@ fun TaikoPad(
 
     // Animation ticker state to drive frame-by-frame star rotation and fade transitions smoothly
     var animationTick by remember { mutableLongStateOf(0L) }
-    LaunchedEffect(ripples.size) {
-        if (ripples.isNotEmpty()) {
+    LaunchedEffect(ripples.size, settings.lightweightRenderingMode) {
+        if (!settings.lightweightRenderingMode && ripples.isNotEmpty()) {
             while (ripples.isNotEmpty()) {
                 animationTick = SystemClock.uptimeMillis()
                 delay(16)
@@ -107,14 +107,14 @@ fun TaikoPad(
 
     // Touch boundaries ratios (based on precise percentages)
     val donMaxRadius = drumRadius * 0.6864f
-    val katRimRadius = drumRadius * 0.8000f
+    val katRimRadius = drumRadius
 
     // Dynamic Big Note DS Radii (面: 内側0~donBigRadius, フチ: 内側donMaxRadius~外側katBigOuterRadius)
-    val donBigFactor = (settings.donBigNotePercent / 100f).coerceIn(0.10f, 1.0f)
+    val donBigFactor = (settings.donBigNotePercent / 100f).coerceAtLeast(0.10f)
     val donBigRadius = donMaxRadius * donBigFactor
 
-    val katBigFactor = (settings.katBigNotePercent / 100f).coerceIn(0.10f, 1.0f)
-    // Kat big note zone covers from the inner boundary (donMaxRadius) outwards to katBigOuterRadius
+    val katBigFactor = (settings.katBigNotePercent / 100f).coerceAtLeast(0.10f)
+    // Kat big note zone & visual Kat light effect extends from the inner boundary (donMaxRadius) outwards to katBigOuterRadius
     val katBigOuterRadius = donMaxRadius + (drumRadius - donMaxRadius) * katBigFactor
 
     // Track active parts per touch pointer ID
@@ -174,10 +174,11 @@ fun TaikoPad(
         val baseColor = if (visualBigKat) Color(0xFF00B2FF) else Color(0xFF5CD6FF)
         baseColor.copy(alpha = 0f)
     }
-    val leftKatColor by animateColorAsState(
+    val leftKatColorAnimated by animateColorAsState(
         targetValue = leftKatColorTarget,
         animationSpec = tween(durationMillis = 80, easing = LinearOutSlowInEasing)
     )
+    val leftKatColor = if (settings.lightweightRenderingMode) leftKatColorTarget else leftKatColorAnimated
 
     val rightKatColorTarget = if (visualRightKat) {
         if (visualBigKat) Color(0xFF00B2FF) else Color(0xFF5CD6FF)
@@ -185,40 +186,44 @@ fun TaikoPad(
         val baseColor = if (visualBigKat) Color(0xFF00B2FF) else Color(0xFF5CD6FF)
         baseColor.copy(alpha = 0f)
     }
-    val rightKatColor by animateColorAsState(
+    val rightKatColorAnimated by animateColorAsState(
         targetValue = rightKatColorTarget,
         animationSpec = tween(durationMillis = 80, easing = LinearOutSlowInEasing)
     )
+    val rightKatColor = if (settings.lightweightRenderingMode) rightKatColorTarget else rightKatColorAnimated
 
     val leftDonColorTarget = if (visualLeftDon) {
         Color(0xFFFF5A14)
     } else {
         Color(0xFFFF5A14).copy(alpha = 0f)
     }
-    val leftDonColor by animateColorAsState(
+    val leftDonColorAnimated by animateColorAsState(
         targetValue = leftDonColorTarget,
         animationSpec = tween(durationMillis = 80, easing = LinearOutSlowInEasing)
     )
+    val leftDonColor = if (settings.lightweightRenderingMode) leftDonColorTarget else leftDonColorAnimated
 
     val rightDonColorTarget = if (visualRightDon) {
         Color(0xFFFF5A14)
     } else {
         Color(0xFFFF5A14).copy(alpha = 0f)
     }
-    val rightDonColor by animateColorAsState(
+    val rightDonColorAnimated by animateColorAsState(
         targetValue = rightDonColorTarget,
         animationSpec = tween(durationMillis = 80, easing = LinearOutSlowInEasing)
     )
+    val rightDonColor = if (settings.lightweightRenderingMode) rightDonColorTarget else rightDonColorAnimated
 
     val bigDonColorTarget = if (visualBigDon) {
         Color(0xFFD03800)
     } else {
         Color(0xFFD03800).copy(alpha = 0f)
     }
-    val bigDonColor by animateColorAsState(
+    val bigDonColorAnimated by animateColorAsState(
         targetValue = bigDonColorTarget,
         animationSpec = tween(durationMillis = 80, easing = LinearOutSlowInEasing)
     )
+    val bigDonColor = if (settings.lightweightRenderingMode) bigDonColorTarget else bigDonColorAnimated
 
     val effectiveBgColor = if (isOverlay) {
         Color.Transparent
@@ -376,24 +381,29 @@ fun TaikoPad(
                             vibrateAction(isBigNote)
                         }
 
-                        // Create visual hit ripple
-                        val rippleId = rippleIdCounter++
-                        val rippleRadius = if (isBigNote) 240f else 150f
-                        ripples.add(
-                            VisualRipple(
-                                id = rippleId,
-                                x = pX,
-                                y = pY,
-                                isDon = isDon,
-                                maxRadius = rippleRadius,
-                                creationTime = now
+                        // Create visual hit ripple (only when lightweight rendering mode is OFF)
+                        if (!settings.lightweightRenderingMode) {
+                            val rippleId = rippleIdCounter++
+                            val rippleRadius = if (isBigNote) 240f else 150f
+                            if (ripples.size >= 6) {
+                                ripples.removeAt(0)
+                            }
+                            ripples.add(
+                                VisualRipple(
+                                    id = rippleId,
+                                    x = pX,
+                                    y = pY,
+                                    isDon = isDon,
+                                    maxRadius = rippleRadius,
+                                    creationTime = now
+                                )
                             )
-                        )
 
-                        // Remove ripple after 350ms
-                        scope.launch {
-                            delay(350)
-                            ripples.removeAll { it.id == rippleId }
+                            // Remove ripple after 350ms
+                            scope.launch {
+                                delay(350)
+                                ripples.removeAll { it.id == rippleId }
+                            }
                         }
                     }
 
@@ -403,20 +413,6 @@ fun TaikoPad(
                                 onInputTriggered(parts[0], false)
                             } else {
                                 onMultiInputTriggered(parts.map { it to false })
-                            }
-                        }
-
-                        // Safety check: if no pointers remain on screen, forcibly clear all pressed states
-                        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL || event.pointerCount <= 1) {
-                            if (pointerPartsMap.isEmpty()) {
-                                onMultiInputTriggered(
-                                    listOf(
-                                        "leftDon" to false,
-                                        "rightDon" to false,
-                                        "leftKat" to false,
-                                        "rightKat" to false
-                                    )
-                                )
                             }
                         }
                     }
@@ -488,7 +484,7 @@ fun TaikoPad(
                 val drumSize = Size(drumDiameter, drumDiameter)
                 val drumTopLeft = Offset(centerX - drumRadius, centerY - drumRadius)
 
-                // Define the visual drum radius (thinner rim for elegant top-down balance, e.g. 80% of drumRadius)
+                // Define the visual drum radius (thinner rim for elegant top-down balance: 80% of drumRadius)
                 val visualDrumRadius = drumRadius * 0.80f
                 val visualDrumSize = Size(visualDrumRadius * 2f, visualDrumRadius * 2f)
                 val visualDrumTopLeft = Offset(centerX - visualDrumRadius, centerY - visualDrumRadius)
@@ -513,10 +509,10 @@ fun TaikoPad(
                 )
 
                 // 2. Active Kat highlight background (Lights up in beautiful Cyan-Blue)
-                // Small Kat lights up to visualDrumRadius (80%), while Big Kat extends with the configured katBigOuterRadius
-                val leftKatEffectiveRadius = if (visualBigKat) katBigOuterRadius else visualDrumRadius
-                val leftKatEffectiveSize = Size(leftKatEffectiveRadius * 2f, leftKatEffectiveRadius * 2f)
-                val leftKatEffectiveTopLeft = Offset(centerX - leftKatEffectiveRadius, centerY - leftKatEffectiveRadius)
+                // The Kat light effect and Big Kat zone extend outwards together to katBigOuterRadius
+                val katDrawRadius = katBigOuterRadius
+                val katDrawSize = Size(katDrawRadius * 2f, katDrawRadius * 2f)
+                val katDrawTopLeft = Offset(centerX - katDrawRadius, centerY - katDrawRadius)
 
                 if (leftKatColor.alpha > 0f) {
                     drawArc(
@@ -524,14 +520,10 @@ fun TaikoPad(
                         startAngle = 90f,
                         sweepAngle = 180f,
                         useCenter = true,
-                        topLeft = leftKatEffectiveTopLeft,
-                        size = leftKatEffectiveSize
+                        topLeft = katDrawTopLeft,
+                        size = katDrawSize
                     )
                 }
-
-                val rightKatEffectiveRadius = if (visualBigKat) katBigOuterRadius else visualDrumRadius
-                val rightKatEffectiveSize = Size(rightKatEffectiveRadius * 2f, rightKatEffectiveRadius * 2f)
-                val rightKatEffectiveTopLeft = Offset(centerX - rightKatEffectiveRadius, centerY - rightKatEffectiveRadius)
 
                 if (rightKatColor.alpha > 0f) {
                     drawArc(
@@ -539,8 +531,8 @@ fun TaikoPad(
                         startAngle = 270f,
                         sweepAngle = 180f,
                         useCenter = true,
-                        topLeft = rightKatEffectiveTopLeft,
-                        size = rightKatEffectiveSize
+                        topLeft = katDrawTopLeft,
+                        size = katDrawSize
                     )
                 }
 
@@ -655,53 +647,55 @@ fun TaikoPad(
         }
 
         // --- 3. Tap Ripples layer (タップ波紋星のエフェクト) ---
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            // Read animationTick state to trigger recomposition on every frame
-            val tick = animationTick
-            ripples.forEach { ripple ->
-                val elapsed = SystemClock.uptimeMillis() - ripple.creationTime
-                val duration = 350.0f
-                val progress = (elapsed / duration).coerceIn(0f, 1f)
-                
-                val rotationAngle = progress * 140f // Smooth rotation up to 140 degrees
-                val alpha = 1.0f - progress // Elegant fade out
-                val currentRadius = ripple.maxRadius * (0.4f + 0.6f * progress) // Scale up from 40% to 100% size
-                
-                rotate(degrees = rotationAngle, pivot = Offset(ripple.x, ripple.y)) {
-                    if (ripple.isDon) {
-                        // Don ripple (Red/Orange Star)
-                        drawCircle(
-                            color = Color(0xFFF87171).copy(alpha = 0.5f * alpha),
-                            radius = currentRadius * 0.7f,
-                            center = Offset(ripple.x, ripple.y),
-                            style = Stroke(width = 8f)
-                        )
-                        drawCircle(
-                            color = Color(0xFFFB923C).copy(alpha = 0.3f * alpha),
-                            radius = currentRadius,
-                            center = Offset(ripple.x, ripple.y),
-                            style = Stroke(width = 4f)
-                        )
-                        
-                        // Draw Star path inside
-                        drawStar(Offset(ripple.x, ripple.y), currentRadius * 0.45f, Color(0xFFEA580C).copy(alpha = alpha))
-                    } else {
-                        // Kat ripple (Sky Blue Cross)
-                        drawCircle(
-                            color = Color(0xFF38BDF8).copy(alpha = 0.5f * alpha),
-                            radius = currentRadius * 0.7f,
-                            center = Offset(ripple.x, ripple.y),
-                            style = Stroke(width = 8f)
-                        )
-                        drawCircle(
-                            color = Color.White.copy(alpha = 0.4f * alpha),
-                            radius = currentRadius,
-                            center = Offset(ripple.x, ripple.y),
-                            style = Stroke(width = 4f)
-                        )
-                        
-                        // Draw Cross Star
-                        drawCrossStar(Offset(ripple.x, ripple.y), currentRadius * 0.4f, Color(0xFFBAE6FD).copy(alpha = alpha))
+        if (!settings.lightweightRenderingMode && ripples.isNotEmpty()) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                // Read animationTick state to trigger recomposition on every frame
+                val tick = animationTick
+                ripples.forEach { ripple ->
+                    val elapsed = SystemClock.uptimeMillis() - ripple.creationTime
+                    val duration = 350.0f
+                    val progress = (elapsed / duration).coerceIn(0f, 1f)
+                    
+                    val rotationAngle = progress * 140f // Smooth rotation up to 140 degrees
+                    val alpha = 1.0f - progress // Elegant fade out
+                    val currentRadius = ripple.maxRadius * (0.4f + 0.6f * progress) // Scale up from 40% to 100% size
+                    
+                    rotate(degrees = rotationAngle, pivot = Offset(ripple.x, ripple.y)) {
+                        if (ripple.isDon) {
+                            // Don ripple (Red/Orange Star)
+                            drawCircle(
+                                color = Color(0xFFF87171).copy(alpha = 0.5f * alpha),
+                                radius = currentRadius * 0.7f,
+                                center = Offset(ripple.x, ripple.y),
+                                style = Stroke(width = 8f)
+                            )
+                            drawCircle(
+                                color = Color(0xFFFB923C).copy(alpha = 0.3f * alpha),
+                                radius = currentRadius,
+                                center = Offset(ripple.x, ripple.y),
+                                style = Stroke(width = 4f)
+                            )
+                            
+                            // Draw Star path inside
+                            drawStar(Offset(ripple.x, ripple.y), currentRadius * 0.45f, Color(0xFFEA580C).copy(alpha = alpha))
+                        } else {
+                            // Kat ripple (Sky Blue Cross)
+                            drawCircle(
+                                color = Color(0xFF38BDF8).copy(alpha = 0.5f * alpha),
+                                radius = currentRadius * 0.7f,
+                                center = Offset(ripple.x, ripple.y),
+                                style = Stroke(width = 8f)
+                            )
+                            drawCircle(
+                                color = Color.White.copy(alpha = 0.4f * alpha),
+                                radius = currentRadius,
+                                center = Offset(ripple.x, ripple.y),
+                                style = Stroke(width = 4f)
+                            )
+                            
+                            // Draw Cross Star
+                            drawCrossStar(Offset(ripple.x, ripple.y), currentRadius * 0.4f, Color(0xFFBAE6FD).copy(alpha = alpha))
+                        }
                     }
                 }
             }

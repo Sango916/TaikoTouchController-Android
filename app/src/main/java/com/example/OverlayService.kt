@@ -19,13 +19,13 @@ import android.os.VibratorManager
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -34,20 +34,23 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
+import kotlin.math.hypot
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.ViewModelStore
@@ -485,7 +488,7 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
 
         if (!isExpanded) {
             params.width = bubbleSize
-            params.height = WindowManager.LayoutParams.WRAP_CONTENT
+            params.height = bubbleSize
             params.x = bubblePosX.toInt()
             params.y = bubblePosY.toInt()
         } else {
@@ -496,20 +499,20 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
             // If on right side, the bubble is aligned to the right inside the menu window (x = menuWidth - bubbleSize).
             // To keep the bubble at the exact same screen X (bubblePosX), params.x starts at bubblePosX + bubbleSize - menuWidth.
             val targetX = if (isRight) {
-                (bubblePosX.toInt() + bubbleSize - menuWidth).coerceIn(margin, dm.widthPixels - menuWidth - margin)
+                (bubblePosX.toInt() + bubbleSize - menuWidth).coerceIn(margin, (dm.widthPixels - menuWidth - margin).coerceAtLeast(margin))
             } else {
-                bubblePosX.toInt().coerceIn(margin, dm.widthPixels - menuWidth - margin)
+                bubblePosX.toInt().coerceIn(margin, (dm.widthPixels - menuWidth - margin).coerceAtLeast(margin))
             }
 
             // Vertical window position:
             // If on top half, menu card is below bubble: window Y starts at bubblePosY.
             // If on bottom half, menu card is above bubble: window Y is shifted so the bubble button stays at bubblePosY.
-            val estimatedMenuHeight = (205 * density).toInt()
+            val estimatedMenuHeight = (220 * density).toInt()
             val totalHeight = bubbleSize + estimatedMenuHeight + (8 * density).toInt()
             val targetY = if (isTop) {
-                bubblePosY.toInt().coerceIn(margin, dm.heightPixels - totalHeight - margin)
+                bubblePosY.toInt().coerceIn(margin, (dm.heightPixels - totalHeight - margin).coerceAtLeast(margin))
             } else {
-                (bubblePosY.toInt() + bubbleSize - totalHeight).coerceIn(margin, dm.heightPixels - totalHeight - margin)
+                (bubblePosY.toInt() + bubbleSize - totalHeight).coerceIn(margin, (dm.heightPixels - totalHeight - margin).coerceAtLeast(margin))
             }
 
             params.x = targetX.coerceAtLeast(0)
@@ -602,7 +605,7 @@ fun FloatingBubbleMenu(
     Column(
         horizontalAlignment = horizontalAlign,
         verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.width(220.dp)
+        modifier = if (isMenuExpanded) Modifier.width(220.dp) else Modifier.wrapContentSize()
     ) {
         // If bubble is in bottom half (not top), Menu is placed ABOVE the bubble
         if (!isPlacedOnTop) {
@@ -645,12 +648,21 @@ fun FloatingBubbleMenu(
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun BubbleButton(
     isTouchEnabled: Boolean,
     onClick: () -> Unit,
     onDragDelta: (Float, Float) -> Unit
 ) {
+    val context = LocalContext.current
+    val touchSlop = remember { ViewConfiguration.get(context).scaledTouchSlop.toFloat() }
+    var initialRawX by remember { mutableFloatStateOf(0f) }
+    var initialRawY by remember { mutableFloatStateOf(0f) }
+    var lastRawX by remember { mutableFloatStateOf(0f) }
+    var lastRawY by remember { mutableFloatStateOf(0f) }
+    var isDragging by remember { mutableStateOf(false) }
+
     val bubbleColor = if (isTouchEnabled) {
         Brush.radialGradient(listOf(Color(0xFFF97316), Color(0xFFDC2626)))
     } else {
@@ -665,22 +677,44 @@ fun BubbleButton(
             .clip(CircleShape)
             .background(bubbleColor)
             .border(2.dp, if (isTouchEnabled) Color(0xFFFDE68A) else Color(0xFF93C5FD), CircleShape)
-            .pointerInput(Unit) {
-                var totalDrag = 0f
-                detectDragGestures(
-                    onDragStart = { totalDrag = 0f },
-                    onDragEnd = {
-                        if (totalDrag < 10f) {
+            .pointerInteropFilter { event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        initialRawX = event.rawX
+                        initialRawY = event.rawY
+                        lastRawX = event.rawX
+                        lastRawY = event.rawY
+                        isDragging = false
+                        true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val totalDx = event.rawX - initialRawX
+                        val totalDy = event.rawY - initialRawY
+                        if (!isDragging && hypot(totalDx.toDouble(), totalDy.toDouble()).toFloat() > touchSlop) {
+                            isDragging = true
+                        }
+                        if (isDragging) {
+                            val dx = event.rawX - lastRawX
+                            val dy = event.rawY - lastRawY
+                            lastRawX = event.rawX
+                            lastRawY = event.rawY
+                            onDragDelta(dx, dy)
+                        }
+                        true
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        if (!isDragging) {
                             onClick()
                         }
-                    },
-                    onDragCancel = { },
-                    onDrag = { change, dragAmount ->
-                        change.consume()
-                        totalDrag += Math.abs(dragAmount.x) + Math.abs(dragAmount.y)
-                        onDragDelta(dragAmount.x, dragAmount.y)
+                        isDragging = false
+                        true
                     }
-                )
+                    MotionEvent.ACTION_CANCEL -> {
+                        isDragging = false
+                        true
+                    }
+                    else -> false
+                }
             }
     ) {
         Column(

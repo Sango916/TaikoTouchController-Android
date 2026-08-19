@@ -71,6 +71,7 @@ fun SettingsPanel(
     var expandShizukuCard by remember(isAllExpanded) { mutableStateOf(isAllExpanded) }
     var expandUsbCard by remember(isAllExpanded) { mutableStateOf(isAllExpanded) }
     var expandDrumCard by remember(isAllExpanded) { mutableStateOf(isAllExpanded) }
+    var expandPresetCard by remember(isAllExpanded) { mutableStateOf(isAllExpanded) }
     var expandKeyCard by remember(isAllExpanded) { mutableStateOf(isAllExpanded) }
     var expandThemeCard by remember(isAllExpanded) { mutableStateOf(isAllExpanded) }
 
@@ -104,6 +105,7 @@ fun SettingsPanel(
                     expandShizukuCard = isAllExpanded
                     expandUsbCard = isAllExpanded
                     expandDrumCard = isAllExpanded
+                    expandPresetCard = isAllExpanded
                     expandKeyCard = isAllExpanded
                     expandThemeCard = isAllExpanded
                 },
@@ -836,17 +838,376 @@ fun SettingsPanel(
 
         // --- 2.2 USB PC-Wired Connection Card ---
         if (settings.connectionMode == "usb-wired") {
-            val pythonScript = String(android.util.Base64.decode("IyEvdXNyL2Jpbi9lbnYgcHl0aG9uMwojIG1hY09TIFBDLXNpZGUgUmVjZWl2ZXIgZm9yIFRhaWtvIENvbnRyb2xsZXIKIyBGaWxlIGV4dGVuc2lvbiB0byBzYXZlIGFzOiBjb250cm9sbGVyLmNvbW1hbmQgKG9yIGNvbnRyb2xsZXIucHkpCgppbXBvcnQgc29ja2V0CmltcG9ydCBzdWJwcm9jZXNzCmltcG9ydCB0aW1lCmltcG9ydCBzeXMKaW1wb3J0IG9zCmltcG9ydCB1cmxsaWIucmVxdWVzdAppbXBvcnQgemlwZmlsZQppbXBvcnQgdHJhY2ViYWNrCgpQT1JUID0gNjAwMDEKCmRlZiBsb2cobXNnKToKICAgIHByaW50KG1zZywgZmx1c2g9VHJ1ZSkKCmRlZiBtYWluKCk6CiAgICBsb2coIj09PSBUYWlrbyBDb250cm9sbGVyIFJlY2VpdmVyIGZvciBtYWNPUyA9PT0iKQogICAgCiAgICBhZGJfY21kID0gImFkYiIKCiAgICAjIFZlcmlmeSBBREIKICAgIHRyeToKICAgICAgICBzdWJwcm9jZXNzLnJ1bihbImFkYiIsICJ2ZXJzaW9uIl0sIHN0ZG91dD1zdWJwcm9jZXNzLkRFVk5VTEwsIHN0ZGVycj1zdWJwcm9jZXNzLkRFVk5VTEwpCiAgICBleGNlcHQgRmlsZU5vdEZvdW5kRXJyb3I6CiAgICAgICAgaWYgb3MucGF0aC5leGlzdHMoIi4vcGxhdGZvcm0tdG9vbHMvYWRiIik6CiAgICAgICAgICAgIGFkYl9jbWQgPSAiLi9wbGF0Zm9ybS10b29scy9hZGIiCiAgICAgICAgZWxzZToKICAgICAgICAgICAgbG9nKCJBREIgbm90IGZvdW5kIGluIFBBVEguIENoZWNraW5nIGxvY2FsIHBsYXRmb3JtLXRvb2xzLi4uIikKICAgICAgICAgICAgdHJ5OgogICAgICAgICAgICAgICAgbG9nKCJUcnlpbmcgdG8gaW5zdGFsbCBhbmRyb2lkLXBsYXRmb3JtLXRvb2xzIHZpYSBIb21lYnJldy4uLiIpCiAgICAgICAgICAgICAgICBzdWJwcm9jZXNzLnJ1bihbImJyZXciLCAiaW5zdGFsbCIsICJhbmRyb2lkLXBsYXRmb3JtLXRvb2xzIl0sIGNoZWNrPVRydWUpCiAgICAgICAgICAgICAgICBhZGJfY21kID0gImFkYiIKICAgICAgICAgICAgZXhjZXB0IChzdWJwcm9jZXNzLlN1YnByb2Nlc3NFcnJvciwgRmlsZU5vdEZvdW5kRXJyb3IpOgogICAgICAgICAgICAgICAgbG9nKCJIb21lYnJldyBub3QgYXZhaWxhYmxlLiBEb3dubG9hZGluZyBvZmZpY2lhbCBBbmRyb2lkIFNESyBQbGF0Zm9ybSBUb29scyBmb3IgbWFjT1MuLi4iKQogICAgICAgICAgICAgICAgdXJsID0gImh0dHBzOi8vZGwuZ29vZ2xlLmNvbS9hbmRyb2lkL3JlcG9zaXRvcnkvcGxhdGZvcm0tdG9vbHMtbGF0ZXN0LWRhcndpbi56aXAiCiAgICAgICAgICAgICAgICB6aXBfcGF0aCA9ICIuL3BsYXRmb3JtLXRvb2xzLnppcCIKICAgICAgICAgICAgICAgIHRyeToKICAgICAgICAgICAgICAgICAgICB1cmxsaWIucmVxdWVzdC51cmxyZXRyaWV2ZSh1cmwsIHppcF9wYXRoKQogICAgICAgICAgICAgICAgICAgIHdpdGggemlwZmlsZS5aaXBGaWxlKHppcF9wYXRoLCAiciIpIGFzIHppcF9yZWY6CiAgICAgICAgICAgICAgICAgICAgICAgIHppcF9yZWYuZXh0cmFjdGFsbCgiLiIpCiAgICAgICAgICAgICAgICAgICAgaWYgb3MucGF0aC5leGlzdHMoemlwX3BhdGgpOgogICAgICAgICAgICAgICAgICAgICAgICBvcy5yZW1vdmUoemlwX3BhdGgpCiAgICAgICAgICAgICAgICAgICAgb3MuY2htb2QoIi4vcGxhdGZvcm0tdG9vbHMvYWRiIiwgMG83NTUpCiAgICAgICAgICAgICAgICAgICAgYWRiX2NtZCA9ICIuL3BsYXRmb3JtLXRvb2xzL2FkYiIKICAgICAgICAgICAgICAgICAgICBsb2coIkFEQiBkb3dubG9hZGVkIGFuZCBleHRyYWN0ZWQgc3VjY2Vzc2Z1bGx5IHRvIC4vcGxhdGZvcm0tdG9vbHMvIikKICAgICAgICAgICAgICAgIGV4Y2VwdCBFeGNlcHRpb24gYXMgZToKICAgICAgICAgICAgICAgICAgICBsb2coZiJFcnJvciBkb3dubG9hZGluZyBwbGF0Zm9ybS10b29sczoge2V9IikKICAgICAgICAgICAgICAgICAgICBsb2coIlBsZWFzZSBpbnN0YWxsIEFEQiBtYW51YWxseSAoZS5nLiBicmV3IGluc3RhbGwgYW5kcm9pZC1wbGF0Zm9ybS10b29scykiKQogICAgICAgICAgICAgICAgICAgIHJldHVybgoKICAgICMgQXV0b21hdGljYWxseSBpbnN0YWxsIHB5bnB1dCBpZiBtaXNzaW5nIG9uIG1hY09TIGZvciBrZXkgc2ltdWxhdGlvbgogICAgdHJ5OgogICAgICAgIGZyb20gcHlucHV0LmtleWJvYXJkIGltcG9ydCBLZXksIENvbnRyb2xsZXIKICAgIGV4Y2VwdCBJbXBvcnRFcnJvcjoKICAgICAgICBsb2coIkluc3RhbGxpbmcgcHlucHV0IGxpYnJhcnkgZm9yIGtleWJvYXJkIHNpbXVsYXRpb24uLi4iKQogICAgICAgIHN1YnByb2Nlc3MuY2hlY2tfY2FsbChbc3lzLmV4ZWN1dGFibGUsICItbSIsICJwaXAiLCAiaW5zdGFsbCIsICJweW5wdXQiXSkKICAgICAgICBmcm9tIHB5bnB1dC5rZXlib2FyZCBpbXBvcnQgS2V5LCBDb250cm9sbGVyCgogICAga2V5Ym9hcmQgPSBDb250cm9sbGVyKCkKCiAgICBkZWYgc2VuZF9kb3duKGtleV9jaGFyKToKICAgICAgICB0cnk6CiAgICAgICAgICAgIGtleWJvYXJkLnByZXNzKGtleV9jaGFyKQogICAgICAgIGV4Y2VwdCBFeGNlcHRpb24gYXMgZToKICAgICAgICAgICAgbG9nKGYiS2V5IHByZXNzIGVycm9yOiB7ZX0iKQoKICAgIGRlZiBzZW5kX3VwKGtleV9jaGFyKToKICAgICAgICB0cnk6CiAgICAgICAgICAgIGtleWJvYXJkLnJlbGVhc2Uoa2V5X2NoYXIpCiAgICAgICAgZXhjZXB0IEV4Y2VwdGlvbiBhcyBlOgogICAgICAgICAgICBsb2coZiJLZXkgcmVsZWFzZSBlcnJvcjoge2V9IikKCiAgICBsb2coZiJTZXR0aW5nIHVwIEFEQiBwb3J0IGZvcndhcmRpbmcgKHRjcDp7UE9SVH0pLi4uIikKICAgIHN1YnByb2Nlc3MucnVuKFthZGJfY21kLCAiZm9yd2FyZCIsICItLXJlbW92ZSIsIGYidGNwOntQT1JUfSJdLCBzdGRvdXQ9c3VicHJvY2Vzcy5ERVZOVUxMLCBzdGRlcnI9c3VicHJvY2Vzcy5ERVZOVUxMKQogICAgZndkX3Byb2MgPSBzdWJwcm9jZXNzLnJ1bihbYWRiX2NtZCwgImZvcndhcmQiLCBmInRjcDp7UE9SVH0iLCBmInRjcDp7UE9SVH0iXSwgY2FwdHVyZV9vdXRwdXQ9VHJ1ZSwgdGV4dD1UcnVlKQogICAgaWYgZndkX3Byb2MucmV0dXJuY29kZSAhPSAwOgogICAgICAgIGxvZyhmIkFEQiBmb3J3YXJkIG1lc3NhZ2U6IHtmd2RfcHJvYy5zdGRlcnIuc3RyaXAoKSBvciBmd2RfcHJvYy5zdGRvdXQuc3RyaXAoKX0iKQogICAgICAgIGxvZygiRW5zdXJlIHlvdXIgQW5kcm9pZCBkZXZpY2UgaXMgVVNCIGNvbm5lY3RlZCB3aXRoIFVTQiBkZWJ1Z2dpbmcgZW5hYmxlZC4iKQoKICAgIGxvZyhmIkNvbm5lY3RpbmcgdG8gQW5kcm9pZCBUYWlrbyBjb250cm9sbGVyIG9uIGxvY2FsaG9zdDp7UE9SVH0uLi4iKQogICAgbG9nKCJOb3RlOiBFbnN1cmUgVGVybWluYWwvQXBwIGhhcyBBY2Nlc3NpYmlsaXR5IHBlcm1pc3Npb24gaW4gU3lzdGVtIFNldHRpbmdzIC0+IFByaXZhY3kgJiBTZWN1cml0eSAtPiBBY2Nlc3NpYmlsaXR5LiIpCgogICAgd2hpbGUgVHJ1ZToKICAgICAgICB0cnk6CiAgICAgICAgICAgIHMgPSBzb2NrZXQuc29ja2V0KHNvY2tldC5BRl9JTkVULCBzb2NrZXQuU09DS19TVFJFQU0pCiAgICAgICAgICAgIHMuc2V0dGltZW91dCgzLjApCiAgICAgICAgICAgIHMuY29ubmVjdCgoIjEyNy4wLjAuMSIsIFBPUlQpKQogICAgICAgICAgICAKICAgICAgICAgICAgZiA9IHMubWFrZWZpbGUoInIiLCBlbmNvZGluZz0idXRmLTgiKQogICAgICAgICAgICBiYW5uZXIgPSBmLnJlYWRsaW5lKCkKICAgICAgICAgICAgaWYgbm90IGJhbm5lcjoKICAgICAgICAgICAgICAgIHMuY2xvc2UoKQogICAgICAgICAgICAgICAgbG9nKCJXYWl0aW5nIGZvciBBbmRyb2lkIGFwcCByZXNwb25zZS4uLiAocmV0cnlpbmcgaW4gMnMpIikKICAgICAgICAgICAgICAgIHRpbWUuc2xlZXAoMikKICAgICAgICAgICAgICAgIGNvbnRpbnVlCgogICAgICAgICAgICBzLnNldHRpbWVvdXQoTm9uZSkKICAgICAgICAgICAgbG9nKCJDb25uZWN0ZWQgc3VjY2Vzc2Z1bGx5IHRvIFRhaWtvIEFwcCEgU3RhcnQgeW91ciBnYW1lIG5vdyEiKQogICAgICAgICAgICAKICAgICAgICAgICAgZm9yIGxpbmUgaW4gZjoKICAgICAgICAgICAgICAgIGxpbmUgPSBsaW5lLnN0cmlwKCkKICAgICAgICAgICAgICAgIGlmIG5vdCBsaW5lOgogICAgICAgICAgICAgICAgICAgIGNvbnRpbnVlCiAgICAgICAgICAgICAgICBwYXJ0cyA9IGxpbmUuc3BsaXQoIiAiKQogICAgICAgICAgICAgICAgaWYgbGVuKHBhcnRzKSA9PSAyOgogICAgICAgICAgICAgICAgICAgIGFjdGlvbiwga2V5X2NoYXIgPSBwYXJ0c1swXSwgcGFydHNbMV0ubG93ZXIoKQogICAgICAgICAgICAgICAgICAgIGxvZyhmIltLRVldIHthY3Rpb259IC0+IHtrZXlfY2hhcn0iKQogICAgICAgICAgICAgICAgICAgIGlmIGFjdGlvbiA9PSAiRE9XTiI6CiAgICAgICAgICAgICAgICAgICAgICAgIHNlbmRfZG93bihrZXlfY2hhcikKICAgICAgICAgICAgICAgICAgICBlbGlmIGFjdGlvbiA9PSAiVVAiOgogICAgICAgICAgICAgICAgICAgICAgICBzZW5kX3VwKGtleV9jaGFyKQoKICAgICAgICAgICAgbG9nKCJEaXNjb25uZWN0ZWQgYnkgQW5kcm9pZCBhcHAuIFJlY29ubmVjdGluZyBpbiAyIHNlY29uZHMuLi4iKQogICAgICAgICAgICBzLmNsb3NlKCkKICAgICAgICAgICAgdGltZS5zbGVlcCgyKQogICAgICAgIGV4Y2VwdCAoc29ja2V0LnRpbWVvdXQsIENvbm5lY3Rpb25SZWZ1c2VkRXJyb3IsIE9TRXJyb3IpOgogICAgICAgICAgICBsb2coIldhaXRpbmcgZm9yIEFuZHJvaWQgYXBwIGNvbm5lY3Rpb24uLi4gKHJldHJ5aW5nIGluIDIgc2Vjb25kcykiKQogICAgICAgICAgICB0aW1lLnNsZWVwKDIpCiAgICAgICAgZXhjZXB0IEtleWJvYXJkSW50ZXJydXB0OgogICAgICAgICAgICBsb2coIkV4aXRpbmcuLi4iKQogICAgICAgICAgICBicmVhawogICAgICAgIGV4Y2VwdCBFeGNlcHRpb24gYXMgZToKICAgICAgICAgICAgbG9nKGYiRXJyb3I6IHtlfS4gUmVjb25uZWN0aW5nIGluIDIgc2Vjb25kcy4uLiIpCiAgICAgICAgICAgIHRpbWUuc2xlZXAoMikKCmlmIF9fbmFtZV9fID09ICJfX21haW5fXyI6CiAgICB0cnk6CiAgICAgICAgbWFpbigpCiAgICBleGNlcHQgRXhjZXB0aW9uIGFzIGVycjoKICAgICAgICBwcmludChmIkZhdGFsIEVycm9yOiB7ZXJyfSIsIGZsdXNoPVRydWUpCiAgICAgICAgdHJhY2ViYWNrLnByaW50X2V4YygpCiAgICAgICAgaW5wdXQoIlByZXNzIEVudGVyIHRvIGV4aXQuLi4iKQo=", android.util.Base64.DEFAULT), java.nio.charset.StandardCharsets.UTF_8)
-            val powerShellScript = String(android.util.Base64.decode("IyBXaW5kb3dzIFBDLXNpZGUgUmVjZWl2ZXIgZm9yIFRhaWtvIENvbnRyb2xsZXIKIyBGaWxlIGV4dGVuc2lvbiB0byBzYXZlIGFzOiBjb250cm9sbGVyLnBzMQojIFVzYWdlOiBSaWdodC1jbGljayB0aGUgc2F2ZWQgZmlsZSBhbmQgc2VsZWN0ICJSdW4gd2l0aCBQb3dlclNoZWxsIgoKJHBvcnQgPSA2MDAwMQokYWRiQ21kID0gImFkYiIKCiMgQ2hlY2sgaWYgYWRiIGlzIGluIFBBVEgKaWYgKCEoR2V0LUNvbW1hbmQgYWRiIC1FcnJvckFjdGlvbiBTaWxlbnRseUNvbnRpbnVlKSkgewogICAgV3JpdGUtSG9zdCAiQURCIGlzIG5vdCBpbiBQQVRILiBDaGVja2luZyBsb2NhbCBwbGF0Zm9ybS10b29scy4uLiIgLUZvcmVncm91bmRDb2xvciBZZWxsb3cKICAgIAogICAgaWYgKFRlc3QtUGF0aCAiLlxwbGF0Zm9ybS10b29sc1xhZGIuZXhlIikgewogICAgICAgICRhZGJDbWQgPSAiLlxwbGF0Zm9ybS10b29sc1xhZGIuZXhlIgogICAgICAgIFdyaXRlLUhvc3QgIkZvdW5kIGxvY2FsIEFEQiBpbiBwbGF0Zm9ybS10b29scyBmb2xkZXIuIiAtRm9yZWdyb3VuZENvbG9yIEdyZWVuCiAgICB9IGVsc2UgewogICAgICAgIFdyaXRlLUhvc3QgIlRyeWluZyB0byBpbnN0YWxsIEFEQiB2aWEgd2luZ2V0Li4uIiAtRm9yZWdyb3VuZENvbG9yIEN5YW4KICAgICAgICBpZiAoR2V0LUNvbW1hbmQgd2luZ2V0IC1FcnJvckFjdGlvbiBTaWxlbnRseUNvbnRpbnVlKSB7CiAgICAgICAgICAgIHRyeSB7CiAgICAgICAgICAgICAgICB3aW5nZXQgaW5zdGFsbCBHb29nbGUuQWRiIC0tc2lsZW50IC0tYWNjZXB0LXNvdXJjZS1hZ3JlZW1lbnRzIC0tYWNjZXB0LXBhY2thZ2UtYWdyZWVtZW50cyB8IE91dC1OdWxsCiAgICAgICAgICAgICAgICAkZW52OlBhdGggPSBbU3lzdGVtLkVudmlyb25tZW50XTo6R2V0RW52aXJvbm1lbnRWYXJpYWJsZSgiUGF0aCIsIk1hY2hpbmUiKSArICI7IiArIFtTeXN0ZW0uRW52aXJvbm1lbnRdOjpHZXRFbnZpcm9ubWVudFZhcmlhYmxlKCJQYXRoIiwiVXNlciIpCiAgICAgICAgICAgIH0gY2F0Y2gge30KICAgICAgICB9CgogICAgICAgIGlmICghKEdldC1Db21tYW5kIGFkYiAtRXJyb3JBY3Rpb24gU2lsZW50bHlDb250aW51ZSkpIHsKICAgICAgICAgICAgV3JpdGUtSG9zdCAid2luZ2V0IHVuYXZhaWxhYmxlLiBEb3dubG9hZGluZyBvZmZpY2lhbCBBbmRyb2lkIFNESyBQbGF0Zm9ybSBUb29scy4uLiIgLUZvcmVncm91bmRDb2xvciBZZWxsb3cKICAgICAgICAgICAgJHVybCA9ICJodHRwczovL2RsLmdvb2dsZS5jb20vYW5kcm9pZC9yZXBvc2l0b3J5L3BsYXRmb3JtLXRvb2xzLWxhdGVzdC13aW5kb3dzLnppcCIKICAgICAgICAgICAgJG91dHB1dCA9ICIuXHBsYXRmb3JtLXRvb2xzLnppcCIKICAgICAgICAgICAgdHJ5IHsKICAgICAgICAgICAgICAgIEludm9rZS1XZWJSZXF1ZXN0IC1VcmkgJHVybCAtT3V0RmlsZSAkb3V0cHV0CiAgICAgICAgICAgICAgICBFeHBhbmQtQXJjaGl2ZSAtUGF0aCAkb3V0cHV0IC1EZXN0aW5hdGlvblBhdGggIi4iIC1Gb3JjZQogICAgICAgICAgICAgICAgUmVtb3ZlLUl0ZW0gJG91dHB1dAogICAgICAgICAgICAgICAgaWYgKFRlc3QtUGF0aCAiLlxwbGF0Zm9ybS10b29sc1xhZGIuZXhlIikgewogICAgICAgICAgICAgICAgICAgICRhZGJDbWQgPSAiLlxwbGF0Zm9ybS10b29sc1xhZGIuZXhlIgogICAgICAgICAgICAgICAgICAgIFdyaXRlLUhvc3QgIkFEQiBkb3dubG9hZGVkIGFuZCBleHRyYWN0ZWQgc3VjY2Vzc2Z1bGx5ISIgLUZvcmVncm91bmRDb2xvciBHcmVlbgogICAgICAgICAgICAgICAgfSBlbHNlIHsKICAgICAgICAgICAgICAgICAgICBXcml0ZS1Ib3N0ICJFcnJvcjogRmFpbGVkIHRvIGV4dHJhY3QgcGxhdGZvcm0tdG9vbHMuIiAtRm9yZWdyb3VuZENvbG9yIFJlZAogICAgICAgICAgICAgICAgICAgIFBhdXNlCiAgICAgICAgICAgICAgICAgICAgRXhpdAogICAgICAgICAgICAgICAgfQogICAgICAgICAgICB9IGNhdGNoIHsKICAgICAgICAgICAgICAgIFdyaXRlLUhvc3QgIkVycm9yOiBDb3VsZCBub3QgZG93bmxvYWQgQURCLiBQbGVhc2UgaW5zdGFsbCBBREIgb3IgcGxhdGZvcm0tdG9vbHMgbWFudWFsbHkuIiAtRm9yZWdyb3VuZENvbG9yIFJlZAogICAgICAgICAgICAgICAgUGF1c2UKICAgICAgICAgICAgICAgIEV4aXQKICAgICAgICAgICAgfQogICAgICAgIH0KICAgIH0KfQoKIyBBZGQgQyMgaGVscGVyIGZvciBXaW4zMiBsb3ctbGF0ZW5jeSBrZXkgZXZlbnRzIHdpdGggRGlyZWN0WC9EaXJlY3RJbnB1dCBIYXJkd2FyZSBTY2FuQ29kZSBzdXBwb3J0CmlmICghKCJUYWlrb0tleWJvYXJkIiAtYXMgW3R5cGVdKSkgewogICAgJFNpZ25hdHVyZSA9IEAiCnVzaW5nIFN5c3RlbTsKdXNpbmcgU3lzdGVtLlJ1bnRpbWUuSW50ZXJvcFNlcnZpY2VzOwoKcHVibGljIGNsYXNzIFRhaWtvS2V5Ym9hcmQgewogICAgW0RsbEltcG9ydCgidXNlcjMyLmRsbCIpXQogICAgcHVibGljIHN0YXRpYyBleHRlcm4gdm9pZCBrZXliZF9ldmVudChieXRlIGJWaywgYnl0ZSBiU2NhbiwgdWludCBkd0ZsYWdzLCBVSW50UHRyIGR3RXh0cmFJbmZvKTsKCiAgICBbRGxsSW1wb3J0KCJ1c2VyMzIuZGxsIildCiAgICBwdWJsaWMgc3RhdGljIGV4dGVybiB1aW50IE1hcFZpcnR1YWxLZXkodWludCB1Q29kZSwgdWludCB1TWFwVHlwZSk7CgogICAgW0RsbEltcG9ydCgidXNlcjMyLmRsbCIsIFNldExhc3RFcnJvciA9IHRydWUpXQogICAgcHVibGljIHN0YXRpYyBleHRlcm4gdWludCBTZW5kSW5wdXQodWludCBuSW5wdXRzLCBJbnRQdHIgcElucHV0cywgaW50IGNiU2l6ZSk7CgogICAgcHJpdmF0ZSBjb25zdCB1aW50IEtFWUVWRU5URl9LRVlVUCA9IDB4MDAwMjsKCiAgICBwcml2YXRlIHN0YXRpYyB2b2lkIFNlbmREb3duUmF3KGJ5dGUgdmtleSwgdXNob3J0IHNjYW5Db2RlKSB7CiAgICAgICAga2V5YmRfZXZlbnQodmtleSwgKGJ5dGUpc2NhbkNvZGUsIDAsIFVJbnRQdHIuWmVybyk7CgogICAgICAgIHRyeSB7CiAgICAgICAgICAgIGludCBjYlNpemUgPSAoSW50UHRyLlNpemUgPT0gOCkgPyA0MCA6IDI4OwogICAgICAgICAgICBieXRlW10gaW5wdXRCeXRlcyA9IG5ldyBieXRlW2NiU2l6ZV07CiAgICAgICAgICAgIEJpdENvbnZlcnRlci5HZXRCeXRlcygodWludCkxKS5Db3B5VG8oaW5wdXRCeXRlcywgMCk7IC8vIElOUFVUX0tFWUJPQVJECiAgICAgICAgICAgIGludCBraU9mZnNldCA9IChJbnRQdHIuU2l6ZSA9PSA4KSA/IDggOiA0OwogICAgICAgICAgICBCaXRDb252ZXJ0ZXIuR2V0Qnl0ZXMoc2NhbkNvZGUpLkNvcHlUbyhpbnB1dEJ5dGVzLCBraU9mZnNldCArIDIpOyAvLyB3U2NhbgogICAgICAgICAgICBCaXRDb252ZXJ0ZXIuR2V0Qnl0ZXMoKHVpbnQpMHgwMDA4KS5Db3B5VG8oaW5wdXRCeXRlcywga2lPZmZzZXQgKyA0KTsgLy8gS0VZRVZFTlRGX1NDQU5DT0RFCgogICAgICAgICAgICBHQ0hhbmRsZSBoYW5kbGUgPSBHQ0hhbmRsZS5BbGxvYyhpbnB1dEJ5dGVzLCBHQ0hhbmRsZVR5cGUuUGlubmVkKTsKICAgICAgICAgICAgU2VuZElucHV0KDEsIGhhbmRsZS5BZGRyT2ZQaW5uZWRPYmplY3QoKSwgY2JTaXplKTsKICAgICAgICAgICAgaGFuZGxlLkZyZWUoKTsKICAgICAgICB9IGNhdGNoIHt9CiAgICB9CgogICAgcHJpdmF0ZSBzdGF0aWMgdm9pZCBTZW5kVXBSYXcoYnl0ZSB2a2V5LCB1c2hvcnQgc2NhbkNvZGUpIHsKICAgICAgICBrZXliZF9ldmVudCh2a2V5LCAoYnl0ZSlzY2FuQ29kZSwgS0VZRVZFTlRGX0tFWVVQLCBVSW50UHRyLlplcm8pOwoKICAgICAgICB0cnkgewogICAgICAgICAgICBpbnQgY2JTaXplID0gKEludFB0ci5TaXplID09IDgpID8gNDAgOiAyODsKICAgICAgICAgICAgYnl0ZVtdIGlucHV0Qnl0ZXMgPSBuZXcgYnl0ZVtjYlNpemVdOwogICAgICAgICAgICBCaXRDb252ZXJ0ZXIuR2V0Qnl0ZXMoKHVpbnQpMSkuQ29weVRvKGlucHV0Qnl0ZXMsIDApOyAvLyBJTlBVVF9LRVlCT0FSRAogICAgICAgICAgICBpbnQga2lPZmZzZXQgPSAoSW50UHRyLlNpemUgPT0gOCkgPyA4IDogNDsKICAgICAgICAgICAgQml0Q29udmVydGVyLkdldEJ5dGVzKHNjYW5Db2RlKS5Db3B5VG8oaW5wdXRCeXRlcywga2lPZmZzZXQgKyAyKTsgLy8gd1NjYW4KICAgICAgICAgICAgQml0Q29udmVydGVyLkdldEJ5dGVzKCh1aW50KTB4MDAwYSkuQ29weVRvKGlucHV0Qnl0ZXMsIGtpT2Zmc2V0ICsgNCk7IC8vIEtFWUVWRU5URl9TQ0FOQ09ERSB8IEtFWUVWRU5URl9LRVlVUAoKICAgICAgICAgICAgR0NIYW5kbGUgaGFuZGxlID0gR0NIYW5kbGUuQWxsb2MoaW5wdXRCeXRlcywgR0NIYW5kbGVUeXBlLlBpbm5lZCk7CiAgICAgICAgICAgIFNlbmRJbnB1dCgxLCBoYW5kbGUuQWRkck9mUGlubmVkT2JqZWN0KCksIGNiU2l6ZSk7CiAgICAgICAgICAgIGhhbmRsZS5GcmVlKCk7CiAgICAgICAgfSBjYXRjaCB7fQogICAgfQoKICAgIHB1YmxpYyBzdGF0aWMgdm9pZCBEb3duKGJ5dGUgdmtleSkgewogICAgICAgIHVzaG9ydCBzY2FuQ29kZSA9ICh1c2hvcnQpTWFwVmlydHVhbEtleSh2a2V5LCAwKTsKICAgICAgICBTZW5kRG93blJhdyh2a2V5LCBzY2FuQ29kZSk7CiAgICB9CgogICAgcHVibGljIHN0YXRpYyB2b2lkIFVwKGJ5dGUgdmtleSkgewogICAgICAgIHVzaG9ydCBzY2FuQ29kZSA9ICh1c2hvcnQpTWFwVmlydHVhbEtleSh2a2V5LCAwKTsKICAgICAgICBTZW5kVXBSYXcodmtleSwgc2NhbkNvZGUpOwogICAgfQp9CiJACiAgICB0cnkgewogICAgICAgIEFkZC1UeXBlIC1UeXBlRGVmaW5pdGlvbiAkU2lnbmF0dXJlIC1FcnJvckFjdGlvbiBTdG9wCiAgICB9IGNhdGNoIHsKICAgICAgICBXcml0ZS1Ib3N0ICJGYWlsZWQgdG8gY29tcGlsZSBrZXlib2FyZCBoZWxwZXI6ICRfIiAtRm9yZWdyb3VuZENvbG9yIFJlZAogICAgfQp9CgpXcml0ZS1Ib3N0ICI9PT0gVGFpa28gQ29udHJvbGxlciBSZWNlaXZlciBmb3IgV2luZG93cyA9PT0iIC1Gb3JlZ3JvdW5kQ29sb3IgR3JlZW4KV3JpdGUtSG9zdCAiU2V0dGluZyB1cCBBREIgcG9ydCBmb3J3YXJkaW5nICh0Y3A6JHBvcnQpLi4uIiAtRm9yZWdyb3VuZENvbG9yIEN5YW4KdHJ5IHsgJiAkYWRiQ21kIGZvcndhcmQgLS1yZW1vdmUgdGNwOiRwb3J0IDI+JG51bGwgfSBjYXRjaCB7fQoKJGZ3ZE91dCA9ICYgJGFkYkNtZCBmb3J3YXJkIHRjcDokcG9ydCB0Y3A6JHBvcnQgMj4mMQppZiAoJExBU1RFWElUQ09ERSAtbmUgMCkgewogICAgV3JpdGUtSG9zdCAiTm90aWNlIGZyb20gQURCOiAkZndkT3V0IiAtRm9yZWdyb3VuZENvbG9yIFllbGxvdwogICAgV3JpdGUtSG9zdCAiRW5zdXJlIEFuZHJvaWQgZGV2aWNlIGlzIGNvbm5lY3RlZCB2aWEgVVNCIGFuZCBVU0IgZGVidWdnaW5nIGlzIGVuYWJsZWQhIiAtRm9yZWdyb3VuZENvbG9yIFllbGxvdwp9CgpXcml0ZS1Ib3N0ICJDb25uZWN0aW5nIHRvIEFuZHJvaWQgVGFpa28gY29udHJvbGxlciBvbiBsb2NhbGhvc3Q6JHBvcnQuLi4iIC1Gb3JlZ3JvdW5kQ29sb3IgQ3lhbgoKd2hpbGUgKCR0cnVlKSB7CiAgICAkY2xpZW50ID0gJG51bGwKICAgIHRyeSB7CiAgICAgICAgJGNsaWVudCA9IE5ldy1PYmplY3QgU3lzdGVtLk5ldC5Tb2NrZXRzLlRjcENsaWVudAogICAgICAgICRjb25uZWN0UmVzdWx0ID0gJGNsaWVudC5CZWdpbkNvbm5lY3QoIjEyNy4wLjAuMSIsICRwb3J0LCAkbnVsbCwgJG51bGwpCiAgICAgICAgJHN1Y2Nlc3MgPSAkY29ubmVjdFJlc3VsdC5Bc3luY1dhaXRIYW5kbGUuV2FpdE9uZSgzMDAwLCAkZmFsc2UpCiAgICAgICAgaWYgKCEkc3VjY2VzcykgewogICAgICAgICAgICAkY2xpZW50LkNsb3NlKCkKICAgICAgICAgICAgdGhyb3cgIkNvbm5lY3Rpb24gdGltZW91dCIKICAgICAgICB9CiAgICAgICAgJGNsaWVudC5FbmRDb25uZWN0KCRjb25uZWN0UmVzdWx0KQoKICAgICAgICAkc3RyZWFtID0gJGNsaWVudC5HZXRTdHJlYW0oKQogICAgICAgICRzdHJlYW0uUmVhZFRpbWVvdXQgPSAzMDAwCiAgICAgICAgJHJlYWRlciA9IE5ldy1PYmplY3QgU3lzdGVtLklPLlN0cmVhbVJlYWRlcigkc3RyZWFtKQoKICAgICAgICAjIFJlYWQgYmFubmVyIHRvIHZlcmlmeSByZWFsIGFwcCBjb25uZWN0aW9uCiAgICAgICAgJGJhbm5lciA9ICRyZWFkZXIuUmVhZExpbmUoKQogICAgICAgIGlmICgkbnVsbCAtZXEgJGJhbm5lcikgewogICAgICAgICAgICAkY2xpZW50LkNsb3NlKCkKICAgICAgICAgICAgV3JpdGUtSG9zdCAiV2FpdGluZyBmb3IgQW5kcm9pZCBhcHAgY29ubmVjdGlvbi4uLiAocmV0cnlpbmcgaW4gMiBzZWNvbmRzKSIgLUZvcmVncm91bmRDb2xvciBZZWxsb3cKICAgICAgICAgICAgU3RhcnQtU2xlZXAgLVNlY29uZHMgMgogICAgICAgICAgICBjb250aW51ZQogICAgICAgIH0KCiAgICAgICAgJHN0cmVhbS5SZWFkVGltZW91dCA9IC0xCiAgICAgICAgV3JpdGUtSG9zdCAiQ29ubmVjdGVkIHN1Y2Nlc3NmdWxseSB0byBUYWlrbyBBcHAhIFN0YXJ0IHlvdXIgZ2FtZSBub3chIiAtRm9yZWdyb3VuZENvbG9yIEdyZWVuCiAgICAgICAgCiAgICAgICAgd2hpbGUgKCRjbGllbnQuQ29ubmVjdGVkKSB7CiAgICAgICAgICAgICRsaW5lID0gJHJlYWRlci5SZWFkTGluZSgpCiAgICAgICAgICAgIGlmICgkbnVsbCAtZXEgJGxpbmUpIHsKICAgICAgICAgICAgICAgIFdyaXRlLUhvc3QgIkRpc2Nvbm5lY3RlZCBieSBBbmRyb2lkIGFwcC4iIC1Gb3JlZ3JvdW5kQ29sb3IgWWVsbG93CiAgICAgICAgICAgICAgICBicmVhawogICAgICAgICAgICB9CiAgICAgICAgICAgIAogICAgICAgICAgICAkbGluZSA9ICRsaW5lLlRyaW0oKQogICAgICAgICAgICBpZiAoJGxpbmUuTGVuZ3RoIC1lcSAwKSB7IGNvbnRpbnVlIH0KCiAgICAgICAgICAgICRwYXJ0cyA9ICRsaW5lLlNwbGl0KCcgJykKICAgICAgICAgICAgaWYgKCRwYXJ0cy5MZW5ndGggLWVxIDIpIHsKICAgICAgICAgICAgICAgICRhY3Rpb24gPSAkcGFydHNbMF0KICAgICAgICAgICAgICAgICRrZXkgPSAkcGFydHNbMV0uVG9VcHBlcigpCiAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgIGlmICgka2V5Lkxlbmd0aCAtZ3QgMCkgewogICAgICAgICAgICAgICAgICAgIFdyaXRlLUhvc3QgIltLRVldICRhY3Rpb24gLT4gJGtleSIgLUZvcmVncm91bmRDb2xvciBDeWFuCiAgICAgICAgICAgICAgICAgICAgJHZrZXkgPSBbYnl0ZV1bY2hhcl0ka2V5WzBdCiAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgaWYgKCRhY3Rpb24gLWVxICJET1dOIikgewogICAgICAgICAgICAgICAgICAgICAgICBbVGFpa29LZXlib2FyZF06OkRvd24oJHZrZXkpCiAgICAgICAgICAgICAgICAgICAgfSBlbHNlaWYgKCRhY3Rpb24gLWVxICJVUCIpIHsKICAgICAgICAgICAgICAgICAgICAgICAgW1RhaWtvS2V5Ym9hcmRdOjpVcCgkdmtleSkKICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgIH0KICAgICAgICB9CiAgICB9IGNhdGNoIHsKICAgICAgICBXcml0ZS1Ib3N0ICJXYWl0aW5nIGZvciBBbmRyb2lkIGFwcCBjb25uZWN0aW9uLi4uIChyZXRyeWluZyBpbiAyIHNlY29uZHMpIiAtRm9yZWdyb3VuZENvbG9yIFllbGxvdwogICAgfSBmaW5hbGx5IHsKICAgICAgICBpZiAoJG51bGwgLW5lICRjbGllbnQpIHsKICAgICAgICAgICAgdHJ5IHsgJGNsaWVudC5DbG9zZSgpIH0gY2F0Y2gge30KICAgICAgICB9CiAgICB9CiAgICBTdGFydC1TbGVlcCAtU2Vjb25kcyAyCn0K", android.util.Base64.DEFAULT), java.nio.charset.StandardCharsets.UTF_8)
+            // Linux Receiver Script (.sh / Python wrapper)
+            val linuxScript = """#!/usr/bin/env python3
+# Linux PC-side Receiver for Taiko Controller
+# File extension to save as: controller.sh (or controller.py)
+# Usage: chmod +x controller.sh && ./controller.sh
 
-            val bashScript = String(android.util.Base64.decode("IyEvdXNyL2Jpbi9lbnYgcHl0aG9uMwojIExpbnV4IFBDLXNpZGUgUmVjZWl2ZXIgZm9yIFRhaWtvIENvbnRyb2xsZXIKaW1wb3J0IHNvY2tldCwgc3VicHJvY2VzcywgdGltZSwgc3lzLCBvcywgdXJsbGliLnJlcXVlc3QsIHppcGZpbGUsIHRyYWNlYmFjawoKUE9SVCA9IDYwMDAxCgpkZWYgbG9nKG1zZyk6CiAgICBwcmludChtc2csIGZsdXNoPVRydWUpCgpkZWYgbWFpbigpOgogICAgbG9nKCI9PT0gVGFpa28gQ29udHJvbGxlciBSZWNlaXZlciBmb3IgTGludXggPT09IikKICAgIGFkYl9jbWQgPSAiYWRiIgogICAgdHJ5OgogICAgICAgIHN1YnByb2Nlc3MucnVuKFsiYWRiIiwgInZlcnNpb24iXSwgc3Rkb3V0PXN1YnByb2Nlc3MuREVWTlVMTCwgc3RkZXJyPXN1YnByb2Nlc3MuREVWTlVMTCkKICAgIGV4Y2VwdCBGaWxlTm90Rm91bmRFcnJvcjoKICAgICAgICBpZiBvcy5wYXRoLmV4aXN0cygiLi9wbGF0Zm9ybS10b29scy9hZGIiKToKICAgICAgICAgICAgYWRiX2NtZCA9ICIuL3BsYXRmb3JtLXRvb2xzL2FkYiIKICAgICAgICBlbHNlOgogICAgICAgICAgICBsb2coImFkYiBub3QgZm91bmQgaW4gUEFUSC4gQ2hlY2tpbmcgbG9jYWwgcGxhdGZvcm0tdG9vbHMuLi4iKQogICAgICAgICAgICB0cnk6CiAgICAgICAgICAgICAgICBpZiBvcy5wYXRoLmV4aXN0cygiL3Vzci9iaW4vYXB0LWdldCIpOgogICAgICAgICAgICAgICAgICAgIHN1YnByb2Nlc3MucnVuKFsic3VkbyIsICJhcHQtZ2V0IiwgInVwZGF0ZSJdLCBjaGVjaz1GYWxzZSkKICAgICAgICAgICAgICAgICAgICBzdWJwcm9jZXNzLnJ1bihbInN1ZG8iLCAiYXB0LWdldCIsICJpbnN0YWxsIiwgIi15IiwgImFkYiJdLCBjaGVjaz1UcnVlKQogICAgICAgICAgICAgICAgZWxpZiBvcy5wYXRoLmV4aXN0cygiL3Vzci9iaW4vcGFjbWFuIik6CiAgICAgICAgICAgICAgICAgICAgc3VicHJvY2Vzcy5ydW4oWyJzdWRvIiwgInBhY21hbiIsICItU3kiLCAiLS1ub2NvbmZpcm0iLCAiYW5kcm9pZC10b29scyJdLCBjaGVjaz1UcnVlKQogICAgICAgICAgICAgICAgZWxpZiBvcy5wYXRoLmV4aXN0cygiL3Vzci9iaW4vZG5mIik6CiAgICAgICAgICAgICAgICAgICAgc3VicHJvY2Vzcy5ydW4oWyJzdWRvIiwgImRuZiIsICJpbnN0YWxsIiwgIi15IiwgImFuZHJvaWQtdG9vbHMiXSwgY2hlY2s9VHJ1ZSkKICAgICAgICAgICAgICAgIGVsc2U6CiAgICAgICAgICAgICAgICAgICAgcmFpc2UgRmlsZU5vdEZvdW5kRXJyb3IoKQogICAgICAgICAgICAgICAgYWRiX2NtZCA9ICJhZGIiCiAgICAgICAgICAgIGV4Y2VwdCBFeGNlcHRpb246CiAgICAgICAgICAgICAgICBsb2coIkRvd25sb2FkaW5nIG9mZmljaWFsIEFuZHJvaWQgU0RLIFBsYXRmb3JtIFRvb2xzIGZvciBMaW51eC4uLiIpCiAgICAgICAgICAgICAgICB1cmwgPSAiaHR0cHM6Ly9kbC5nb29nbGUuY29tL2FuZHJvaWQvcmVwb3NpdG9yeS9wbGF0Zm9ybS10b29scy1sYXRlc3QtbGludXguemlwIgogICAgICAgICAgICAgICAgemlwX3BhdGggPSAiLi9wbGF0Zm9ybS10b29scy56aXAiCiAgICAgICAgICAgICAgICB0cnk6CiAgICAgICAgICAgICAgICAgICAgdXJsbGliLnJlcXVlc3QudXJscmV0cmlldmUodXJsLCB6aXBfcGF0aCkKICAgICAgICAgICAgICAgICAgICB3aXRoIHppcGZpbGUuWmlwRmlsZSh6aXBfcGF0aCwgInIiKSBhcyB6aXBfcmVmOgogICAgICAgICAgICAgICAgICAgICAgICB6aXBfcmVmLmV4dHJhY3RhbGwoIi4iKQogICAgICAgICAgICAgICAgICAgIGlmIG9zLnBhdGguZXhpc3RzKHppcF9wYXRoKToKICAgICAgICAgICAgICAgICAgICAgICAgb3MucmVtb3ZlKHppcF9wYXRoKQogICAgICAgICAgICAgICAgICAgIG9zLmNobW9kKCIuL3BsYXRmb3JtLXRvb2xzL2FkYiIsIDBvNzU1KQogICAgICAgICAgICAgICAgICAgIGFkYl9jbWQgPSAiLi9wbGF0Zm9ybS10b29scy9hZGIiCiAgICAgICAgICAgICAgICAgICAgbG9nKCJBREIgZG93bmxvYWRpbmcgY29tcGxldGVkLiIpCiAgICAgICAgICAgICAgICBleGNlcHQgRXhjZXB0aW9uIGFzIGU6CiAgICAgICAgICAgICAgICAgICAgbG9nKGYiRXJyb3IgZG93bmxvYWRpbmcgcGxhdGZvcm0tdG9vbHM6IHtlfSIpCiAgICAgICAgICAgICAgICAgICAgcmV0dXJuCgogICAgaGFzX3hkb3Rvb2wgPSBGYWxzZQogICAgdHJ5OgogICAgICAgIHN1YnByb2Nlc3MucnVuKFsieGRvdG9vbCIsICItLXZlcnNpb24iXSwgc3Rkb3V0PXN1YnByb2Nlc3MuREVWTlVMTCwgc3RkZXJyPXN1YnByb2Nlc3MuREVWTlVMTCkKICAgICAgICBoYXNfeGRvdG9vbCA9IFRydWUKICAgIGV4Y2VwdCBGaWxlTm90Rm91bmRFcnJvcjoKICAgICAgICBsb2coIkNoZWNraW5nIHhkb3Rvb2wgLyBweW5wdXQgZm9yIGxpbnV4IGtleSBpbmplY3Rpb24uLi4iKQogICAgICAgIHRyeToKICAgICAgICAgICAgaWYgb3MucGF0aC5leGlzdHMoIi91c3IvYmluL2FwdC1nZXQiKToKICAgICAgICAgICAgICAgIHN1YnByb2Nlc3MucnVuKFsic3VkbyIsICJhcHQtZ2V0IiwgImluc3RhbGwiLCAiLXkiLCAieGRvdG9vbCJdLCBjaGVjaz1GYWxzZSkKICAgICAgICAgICAgICAgIGhhc194ZG90b29sID0gVHJ1ZQogICAgICAgICAgICBlbGlmIG9zLnBhdGguZXhpc3RzKCIvdXNyL2Jpbi9wYWNtYW4iKToKICAgICAgICAgICAgICAgIHN1YnByb2Nlc3MucnVuKFsic3VkbyIsICJwYWNtYW4iLCAiLVN5IiwgIi0tbm9jb25maXJtIiwgInhkb3Rvb2wiXSwgY2hlY2s9RmFsc2UpCiAgICAgICAgICAgICAgICBoYXNfeGRvdG9vbCA9IFRydWUKICAgICAgICAgICAgZWxpZiBvcy5wYXRoLmV4aXN0cygiL3Vzci9iaW4vZG5mIik6CiAgICAgICAgICAgICAgICBzdWJwcm9jZXNzLnJ1bihbInN1ZG8iLCAiZG5mIiwgImluc3RhbGwiLCAiLXkiLCAieGRvdG9vbCJdLCBjaGVjaz1GYWxzZSkKICAgICAgICAgICAgICAgIGhhc194ZG90b29sID0gVHJ1ZQogICAgICAgIGV4Y2VwdCBFeGNlcHRpb246CiAgICAgICAgICAgIHBhc3MKCiAgICB1c2VfcHlucHV0ID0gRmFsc2UKICAgIGlmIG5vdCBoYXNfeGRvdG9vbDoKICAgICAgICB0cnk6CiAgICAgICAgICAgIGZyb20gcHlucHV0LmtleWJvYXJkIGltcG9ydCBLZXksIENvbnRyb2xsZXIKICAgICAgICAgICAgdXNlX3B5bnB1dCA9IFRydWUKICAgICAgICBleGNlcHQgSW1wb3J0RXJyb3I6CiAgICAgICAgICAgIHRyeToKICAgICAgICAgICAgICAgIHN1YnByb2Nlc3MuY2hlY2tfY2FsbChbc3lzLmV4ZWN1dGFibGUsICItbSIsICJwaXAiLCAiaW5zdGFsbCIsICJweW5wdXQiXSkKICAgICAgICAgICAgICAgIGZyb20gcHlucHV0LmtleWJvYXJkIGltcG9ydCBLZXksIENvbnRyb2xsZXIKICAgICAgICAgICAgICAgIHVzZV9weW5wdXQgPSBUcnVlCiAgICAgICAgICAgIGV4Y2VwdCBFeGNlcHRpb246CiAgICAgICAgICAgICAgICBsb2coIldhcm5pbmc6IE5laXRoZXIgeGRvdG9vbCBub3IgcHlucHV0IGNvdWxkIGJlIGluaXRpYWxpemVkLiIpCgogICAga2V5Ym9hcmQgPSBOb25lCiAgICBpZiB1c2VfcHlucHV0OgogICAgICAgIGZyb20gcHlucHV0LmtleWJvYXJkIGltcG9ydCBLZXksIENvbnRyb2xsZXIKICAgICAgICBrZXlib2FyZCA9IENvbnRyb2xsZXIoKQoKICAgIGRlZiBzZW5kX2Rvd24oa2V5X2NoYXIpOgogICAgICAgIGlmIGhhc194ZG90b29sOgogICAgICAgICAgICBzdWJwcm9jZXNzLnJ1bihbInhkb3Rvb2wiLCAia2V5ZG93biIsIGtleV9jaGFyXSwgc3Rkb3V0PXN1YnByb2Nlc3MuREVWTlVMTCwgc3RkZXJyPXN1YnByb2Nlc3MuREVWTlVMTCkKICAgICAgICBlbGlmIHVzZV9weW5wdXQgYW5kIGtleWJvYXJkOgogICAgICAgICAgICB0cnk6CiAgICAgICAgICAgICAgICBrZXlib2FyZC5wcmVzcyhrZXlfY2hhcikKICAgICAgICAgICAgZXhjZXB0IEV4Y2VwdGlvbjoKICAgICAgICAgICAgICAgIHBhc3MKCiAgICBkZWYgc2VuZF91cChrZXlfY2hhcik6CiAgICAgICAgaWYgaGFzX3hkb3Rvb2w6CiAgICAgICAgICAgIHN1YnByb2Nlc3MucnVuKFsieGRvdG9vbCIsICJrZXl1cCIsIGtleV9jaGFyXSwgc3Rkb3V0PXN1YnByb2Nlc3MuREVWTlVMTCwgc3RkZXJyPXN1YnByb2Nlc3MuREVWTlVMTCkKICAgICAgICBlbGlmIHVzZV9weW5wdXQgYW5kIGtleWJvYXJkOgogICAgICAgICAgICB0cnk6CiAgICAgICAgICAgICAgICBrZXlib2FyZC5yZWxlYXNlKGtleV9jaGFyKQogICAgICAgICAgICBleGNlcHQgRXhjZXB0aW9uOgogICAgICAgICAgICAgICAgcGFzcwoKICAgIGxvZyhmIlNldHRpbmcgdXAgQURCIHBvcnQgZm9yd2FyZGluZyAodGNwOntQT1JUfSkuLi4iKQogICAgc3VicHJvY2Vzcy5ydW4oW2FkYl9jbWQsICJmb3J3YXJkIiwgIi0tcmVtb3ZlIiwgZiJ0Y3A6e1BPUlR9Il0sIHN0ZG91dD1zdWJwcm9jZXNzLkRFVk5VTEwsIHN0ZGVycj1zdWJwcm9jZXNzLkRFVk5VTEwpCiAgICBmd2RfcHJvYyA9IHN1YnByb2Nlc3MucnVuKFthZGJfY21kLCAiZm9yd2FyZCIsIGYidGNwOntQT1JUfSIsIGYidGNwOntQT1JUfSJdLCBjYXB0dXJlX291dHB1dD1UcnVlLCB0ZXh0PVRydWUpCiAgICBpZiBmd2RfcHJvYy5yZXR1cm5jb2RlICE9IDA6CiAgICAgICAgbG9nKGYiQURCIGZvcndhcmQgbWVzc2FnZToge2Z3ZF9wcm9jLnN0ZGVyci5zdHJpcCgpIG9yIGZ3ZF9wcm9jLnN0ZG91dC5zdHJpcCgpfSIpCiAgICAgICAgbG9nKCJFbnN1cmUgeW91ciBBbmRyb2lkIGRldmljZSBpcyBVU0IgY29ubmVjdGVkIHdpdGggVVNCIGRlYnVnZ2luZyBlbmFibGVkLiIpCgogICAgbG9nKGYiQ29ubmVjdGluZyB0byBBbmRyb2lkIFRhaWtvIGNvbnRyb2xsZXIgb24gbG9jYWxob3N0OntQT1JUfS4uLiIpCiAgICB3aGlsZSBUcnVlOgogICAgICAgIHRyeToKICAgICAgICAgICAgcyA9IHNvY2tldC5zb2NrZXQoc29ja2V0LkFGX0lORVQsIHNvY2tldC5TT0NLX1NUUkVBTSkKICAgICAgICAgICAgcy5zZXR0aW1lb3V0KDMuMCkKICAgICAgICAgICAgcy5jb25uZWN0KCgiMTI3LjAuMC4xIiwgUE9SVCkpCiAgICAgICAgICAgIAogICAgICAgICAgICBmID0gcy5tYWtlZmlsZSgiciIsIGVuY29kaW5nPSJ1dGYtOCIpCiAgICAgICAgICAgIGJhbm5lciA9IGYucmVhZGxpbmUoKQogICAgICAgICAgICBpZiBub3QgYmFubmVyOgogICAgICAgICAgICAgICAgcy5jbG9zZSgpCiAgICAgICAgICAgICAgICBsb2coIldhaXRpbmcgZm9yIEFuZHJvaWQgYXBwIHJlc3BvbnNlLi4uIChyZXRyeWluZyBpbiAycykiKQogICAgICAgICAgICAgICAgdGltZS5zbGVlcCgyKQogICAgICAgICAgICAgICAgY29udGludWUKCiAgICAgICAgICAgIHMuc2V0dGltZW91dChOb25lKQogICAgICAgICAgICBsb2coIkNvbm5lY3RlZCBzdWNjZXNzZnVsbHkgdG8gVGFpa28gQXBwISBTdGFydCB5b3VyIGdhbWUgbm93ISIpCiAgICAgICAgICAgIAogICAgICAgICAgICBmb3IgbGluZSBpbiBmOgogICAgICAgICAgICAgICAgbGluZSA9IGxpbmUuc3RyaXAoKQogICAgICAgICAgICAgICAgaWYgbm90IGxpbmU6CiAgICAgICAgICAgICAgICAgICAgY29udGludWUKICAgICAgICAgICAgICAgIHBhcnRzID0gbGluZS5zcGxpdCgiICIpCiAgICAgICAgICAgICAgICBpZiBsZW4ocGFydHMpID09IDI6CiAgICAgICAgICAgICAgICAgICAgYWN0aW9uLCBrZXlfY2hhciA9IHBhcnRzWzBdLCBwYXJ0c1sxXS5sb3dlcigpCiAgICAgICAgICAgICAgICAgICAgbG9nKGYiW0tFWV0ge2FjdGlvbn0gLT4ge2tleV9jaGFyfSIpCiAgICAgICAgICAgICAgICAgICAgaWYgYWN0aW9uID09ICJET1dOIjoKICAgICAgICAgICAgICAgICAgICAgICAgc2VuZF9kb3duKGtleV9jaGFyKQogICAgICAgICAgICAgICAgICAgIGVsaWYgYWN0aW9uID09ICJVUCI6CiAgICAgICAgICAgICAgICAgICAgICAgIHNlbmRfdXAoa2V5X2NoYXIpCgogICAgICAgICAgICBsb2coIkRpc2Nvbm5lY3RlZCBieSBBbmRyb2lkIGFwcC4gUmVjb25uZWN0aW5nIGluIDIgc2Vjb25kcy4uLiIpCiAgICAgICAgICAgIHMuY2xvc2UoKQogICAgICAgICAgICB0aW1lLnNsZWVwKDIpCiAgICAgICAgZXhjZXB0IChzb2NrZXQudGltZW91dCwgQ29ubmVjdGlvblJlZnVzZWRFcnJvciwgT1NFcnJvcik6CiAgICAgICAgICAgIGxvZygiV2FpdGluZyBmb3IgQW5kcm9pZCBhcHAgY29ubmVjdGVkLi4uIChyZXRyeWluZyBpbiAycykiKQogICAgICAgICAgICB0aW1lLnNsZWVwKDIpCiAgICAgICAgZXhjZXB0IEtleWJvYXJkSW50ZXJydXB0OgogICAgICAgICAgICBsb2coIkV4aXRpbmcuLi4iKQogICAgICAgICAgICBicmVhawogICAgICAgIGV4Y2VwdCBFeGNlcHRpb24gYXMgZToKICAgICAgICAgICAgbG9nKGYiRXJyb3I6IHtlfS4gUmVjb25uZWN0aW5nIGluIDIgc2Vjb25kcy4uLiIpCiAgICAgICAgICAgIHRpbWUuc2xlZXAoMikKCmlmIF9fbmFtZV9fID09ICJfX21haW5fXyI6CiAgICB0cnk6CiAgICAgICAgbWFpbigpCiAgICBleGNlcHQgRXhjZXB0aW9uIGFzIGVycjoKICAgICAgICBsb2coZiJGYXRhbCBFcnJvcjoge2Vycn0iKQogICAgICAgIHRyYWNlYmFjay5wcmludF9leGMoKQogICAgICAgIGlucHV0KCJQcmVzcyBFbnRlciB0byBleGl0Li4uIikK", android.util.Base64.DEFAULT), java.nio.charset.StandardCharsets.UTF_8)
+import socket
+import subprocess
+import time
+import sys
+import os
+import urllib.request
+import zipfile
+import traceback
 
-            var activeScriptTab by remember { mutableStateOf(0) } // 0 = Python, 1 = PowerShell, 2 = Bash
+PORT = 60001
+
+def log(msg):
+    print(msg, flush=True)
+
+def ensure_system_package(pkg_name_apt, pkg_name_dnf=None, pkg_name_pacman=None, pkg_name_zypper=None):
+    # Attempt to install a system package using available package manager with sudo prompt
+    if os.path.exists("/usr/bin/apt-get"):
+        log(f"Installing {pkg_name_apt} via apt (administrator password may be requested)...")
+        try:
+            subprocess.run(["sudo", "apt-get", "update"], check=False)
+            subprocess.run(["sudo", "apt-get", "install", "-y", pkg_name_apt], check=True)
+            return True
+        except Exception as e:
+            log(f"apt-get install failed: {e}")
+    elif os.path.exists("/usr/bin/dnf"):
+        pkg = pkg_name_dnf or pkg_name_apt
+        log(f"Installing {pkg} via dnf (administrator password may be requested)...")
+        try:
+            subprocess.run(["sudo", "dnf", "install", "-y", pkg], check=True)
+            return True
+        except Exception as e:
+            log(f"dnf install failed: {e}")
+    elif os.path.exists("/usr/bin/pacman"):
+        pkg = pkg_name_pacman or pkg_name_apt
+        log(f"Installing {pkg} via pacman (administrator password may be requested)...")
+        try:
+            subprocess.run(["sudo", "pacman", "-Sy", "--noconfirm", pkg], check=True)
+            return True
+        except Exception as e:
+            log(f"pacman install failed: {e}")
+    elif os.path.exists("/usr/bin/zypper"):
+        pkg = pkg_name_zypper or pkg_name_apt
+        log(f"Installing {pkg} via zypper (administrator password may be requested)...")
+        try:
+            subprocess.run(["sudo", "zypper", "--non-interactive", "in", pkg], check=True)
+            return True
+        except Exception as e:
+            log(f"zypper install failed: {e}")
+    return False
+
+def main():
+    log("=== Taiko Controller Receiver for Linux ===")
+    
+    adb_cmd = "adb"
+
+    # 1. Verify and setup ADB
+    try:
+        subprocess.run(["adb", "version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except FileNotFoundError:
+        if os.path.exists("./platform-tools/adb"):
+            adb_cmd = "./platform-tools/adb"
+        else:
+            log("ADB not found in PATH. Attempting automatic installation...")
+            installed = ensure_system_package(
+                pkg_name_apt="adb",
+                pkg_name_dnf="android-tools",
+                pkg_name_pacman="android-tools",
+                pkg_name_zypper="android-tools"
+            )
+            if installed:
+                adb_cmd = "adb"
+            else:
+                log("Downloading official standalone Android SDK Platform Tools...")
+                url = "https://dl.google.com/android/repository/platform-tools-latest-linux.zip"
+                zip_path = "./platform-tools.zip"
+                try:
+                    urllib.request.urlretrieve(url, zip_path)
+                    with zipfile.ZipFile(zip_path, "r") as zip_ref:
+                        zip_ref.extractall(".")
+                    if os.path.exists(zip_path):
+                        os.remove(zip_path)
+                    os.chmod("./platform-tools/adb", 0o755)
+                    adb_cmd = "./platform-tools/adb"
+                    log("ADB downloaded and extracted successfully to ./platform-tools/")
+                except Exception as e:
+                    log(f"Error downloading platform-tools: {e}")
+                    log("Please install 'adb' or 'android-tools' via your package manager manually.")
+                    return
+
+    # 2. Key simulation library (pynput)
+    try:
+        from pynput.keyboard import Key, Controller
+    except ImportError:
+        log("pynput library not found. Installing system package...")
+        installed = ensure_system_package(
+            pkg_name_apt="python3-pynput",
+            pkg_name_dnf="python3-pynput",
+            pkg_name_pacman="python-pynput",
+            pkg_name_zypper="python3-pynput"
+        )
+        if not installed:
+            log("Trying pip install with --user flag...")
+            try:
+                subprocess.run([sys.executable, "-m", "pip", "install", "--user", "pynput"], check=True)
+            except Exception as e:
+                log(f"pip install failed: {e}")
+                log("Please run: sudo apt install python3-pynput (or equivalent for your Linux distribution)")
+                return
+        try:
+            from pynput.keyboard import Key, Controller
+        except ImportError:
+            log("Could not load pynput. Please restart the terminal or install python3-pynput.")
+            return
+
+    keyboard = Controller()
+
+    def send_down(key_char):
+        try:
+            keyboard.press(key_char)
+        except Exception as e:
+            log(f"Key press error: {e}")
+
+    def send_up(key_char):
+        try:
+            keyboard.release(key_char)
+        except Exception as e:
+            log(f"Key release error: {e}")
+
+    log(f"Setting up ADB port forwarding (tcp:{PORT})...")
+    subprocess.run([adb_cmd, "forward", "--remove", f"tcp:{PORT}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    fwd_proc = subprocess.run([adb_cmd, "forward", f"tcp:{PORT}", f"tcp:{PORT}"], capture_output=True, text=True)
+    if fwd_proc.returncode != 0:
+        log(f"ADB forward message: {fwd_proc.stderr.strip() or fwd_proc.stdout.strip()}")
+        log("Ensure your Android device is USB connected with USB debugging enabled!")
+
+    log(f"Connecting to Android Taiko controller on localhost:{PORT}...")
+
+    while True:
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(3.0)
+            s.connect(("127.0.0.1", PORT))
+            
+            f = s.makefile("r", encoding="utf-8")
+            banner = f.readline()
+            if not banner:
+                s.close()
+                log("Waiting for Android app response... (retrying in 2s)")
+                time.sleep(2)
+                continue
+
+            s.settimeout(None)
+            log("Connected successfully to Taiko App! Start your game now!")
+            
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split(" ")
+                if len(parts) >= 2:
+                    action = parts[0]
+                    for key_str in parts[1:]:
+                        key_char = key_str.lower()
+                        if not key_char:
+                            continue
+                        log(f"[KEY] {action} -> {key_char}")
+                        if action == "DOWN":
+                            send_down(key_char)
+                        elif action == "UP":
+                            send_up(key_char)
+
+            log("Disconnected by Android app. Reconnecting in 2 seconds...")
+            s.close()
+            time.sleep(2)
+        except (socket.timeout, ConnectionRefusedError, OSError):
+            log("Waiting for Android app connection... (retrying in 2s)")
+            time.sleep(2)
+        except KeyboardInterrupt:
+            log("Exiting...")
+            break
+        except Exception as e:
+            log(f"Error: {e}. Reconnecting in 2 seconds...")
+            time.sleep(2)
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as err:
+        print(f"Fatal Error: {err}", flush=True)
+        traceback.print_exc()
+        input("Press Enter to exit...")
+"""
+
+            // macOS Receiver Script (.command / Python wrapper)
+            val macOSScript = """#!/usr/bin/env python3
+# macOS PC-side Receiver for Taiko Controller
+# File extension to save as: controller.command (or controller.py)
+# Usage: chmod +x controller.command && ./controller.command
+
+import socket
+import subprocess
+import time
+import sys
+import os
+import urllib.request
+import zipfile
+import traceback
+
+PORT = 60001
+
+def log(msg):
+    print(msg, flush=True)
+
+def main():
+    log("=== Taiko Controller Receiver for macOS ===")
+    
+    adb_cmd = "adb"
+
+    # Verify ADB
+    try:
+        subprocess.run(["adb", "version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except FileNotFoundError:
+        if os.path.exists("./platform-tools/adb"):
+            adb_cmd = "./platform-tools/adb"
+        else:
+            log("ADB not found in PATH. Checking Homebrew or standalone tools...")
+            installed = False
+            try:
+                # Homebrew does not require sudo
+                log("Trying to install android-platform-tools via Homebrew...")
+                res = subprocess.run(["brew", "install", "android-platform-tools"], check=False)
+                if res.returncode == 0:
+                    installed = True
+                    adb_cmd = "adb"
+            except Exception:
+                pass
+            
+            if not installed:
+                log("Downloading official Android SDK Platform Tools...")
+                url = "https://dl.google.com/android/repository/platform-tools-latest-darwin.zip"
+                zip_path = "./platform-tools.zip"
+                try:
+                    urllib.request.urlretrieve(url, zip_path)
+                    with zipfile.ZipFile(zip_path, "r") as zip_ref:
+                        zip_ref.extractall(".")
+                    if os.path.exists(zip_path):
+                        os.remove(zip_path)
+                    os.chmod("./platform-tools/adb", 0o755)
+                    adb_cmd = "./platform-tools/adb"
+                    log("ADB downloaded and extracted successfully to ./platform-tools/")
+                except Exception as e:
+                    log(f"Error downloading platform-tools: {e}")
+                    log("Please install ADB manually.")
+                    return
+
+    # Key simulation libraries
+    try:
+        from pynput.keyboard import Key, Controller
+    except ImportError:
+        log("Installing pynput library for keyboard simulation...")
+        installed = False
+        try:
+            subprocess.run([sys.executable, "-m", "pip", "install", "--user", "pynput"], check=True)
+            installed = True
+        except Exception:
+            try:
+                subprocess.run([sys.executable, "-m", "pip", "install", "pynput"], check=True)
+                installed = True
+            except Exception:
+                pass
+        try:
+            from pynput.keyboard import Key, Controller
+        except ImportError:
+            log("Could not load pynput. Please run: pip3 install --user pynput")
+            return
+
+    keyboard = Controller()
+
+    def send_down(key_char):
+        try:
+            keyboard.press(key_char)
+        except Exception as e:
+            log(f"Key press error: {e}")
+
+    def send_up(key_char):
+        try:
+            keyboard.release(key_char)
+        except Exception as e:
+            log(f"Key release error: {e}")
+
+    log(f"Setting up ADB port forwarding (tcp:{PORT})...")
+    subprocess.run([adb_cmd, "forward", "--remove", f"tcp:{PORT}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    fwd_proc = subprocess.run([adb_cmd, "forward", f"tcp:{PORT}", f"tcp:{PORT}"], capture_output=True, text=True)
+    if fwd_proc.returncode != 0:
+        log(f"ADB forward message: {fwd_proc.stderr.strip() or fwd_proc.stdout.strip()}")
+        log("Ensure your Android device is USB connected with USB debugging enabled.")
+
+    log(f"Connecting to Android Taiko controller on localhost:{PORT}...")
+    log("Note: Ensure Terminal/App has Accessibility permission in System Settings -> Privacy & Security -> Accessibility.")
+
+    while True:
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(3.0)
+            s.connect(("127.0.0.1", PORT))
+            
+            f = s.makefile("r", encoding="utf-8")
+            banner = f.readline()
+            if not banner:
+                s.close()
+                log("Waiting for Android app response... (retrying in 2s)")
+                time.sleep(2)
+                continue
+
+            s.settimeout(None)
+            log("Connected successfully to Taiko App! Start your game now!")
+            
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split(" ")
+                if len(parts) >= 2:
+                    action = parts[0]
+                    for key_str in parts[1:]:
+                        key_char = key_str.lower()
+                        if not key_char:
+                            continue
+                        log(f"[KEY] {action} -> {key_char}")
+                        if action == "DOWN":
+                            send_down(key_char)
+                        elif action == "UP":
+                            send_up(key_char)
+
+            log("Disconnected by Android app. Reconnecting in 2 seconds...")
+            s.close()
+            time.sleep(2)
+        except (socket.timeout, ConnectionRefusedError, OSError):
+            log("Waiting for Android app connection... (retrying in 2s)")
+            time.sleep(2)
+        except KeyboardInterrupt:
+            log("Exiting...")
+            break
+        except Exception as e:
+            log(f"Error: {e}. Reconnecting in 2 seconds...")
+            time.sleep(2)
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as err:
+        print(f"Fatal Error: {err}", flush=True)
+        traceback.print_exc()
+        input("Press Enter to exit...")
+"""
+
+            val powerShellScript = String(android.util.Base64.decode("IyBXaW5kb3dzIFBDLXNpZGUgUmVjZWl2ZXIgZm9yIFRhaWtvIENvbnRyb2xsZXIKIyBGaWxlIGV4dGVuc2lvbiB0byBzYXZlIGFzOiBjb250cm9sbGVyLnBzMQojIFVzYWdlOiBSaWdodC1jbGljayB0aGUgc2F2ZWQgZmlsZSBhbmQgc2VsZWN0ICJSdW4gd2l0aCBQb3dlclNoZWxsIgoKJHBvcnQgPSA2MDAwMQokYWRiQ21kID0gImFkYiIKCmZ1bmN0aW9uIEFkZC1QYXRoVG9Vc2VyRW52aXJvbm1lbnQoJGRpclRvQWRkKSB7CiAgICB0cnkgewogICAgICAgICRyZXNvbHZlZERpciA9IChSZXNvbHZlLVBhdGggJGRpclRvQWRkKS5QYXRoCiAgICAgICAgJHVzZXJQYXRoID0gW1N5c3RlbS5FbnZpcm9ubWVudF06OkdldEVudmlyb25tZW50VmFyaWFibGUoIlBhdGgiLCAiVXNlciIpCiAgICAgICAgaWYgKCRudWxsIC1lcSAkdXNlclBhdGgpIHsgJHVzZXJQYXRoID0gIiIgfQogICAgICAgICRwYXRocyA9ICR1c2VyUGF0aC5TcGxpdCgnOycsIFtTeXN0ZW0uU3RyaW5nU3BsaXRPcHRpb25zXTo6UmVtb3ZlRW1wdHlFbnRyaWVzKQogICAgICAgIGlmICgkcGF0aHMgLW5vdGNvbnRhaW5zICRyZXNvbHZlZERpcikgewogICAgICAgICAgICBXcml0ZS1Ib3N0ICJSZWdpc3RlcmluZyBBREIgdG8gVXNlciBQQVRIOiAkcmVzb2x2ZWREaXIiIC1Gb3JlZ3JvdW5kQ29sb3IgQ3lhbgogICAgICAgICAgICAkbmV3UGF0aCA9IGlmICgkdXNlclBhdGguVHJpbSgpLkxlbmd0aCAtZ3QgMCkgeyAiJHVzZXJQYXRoOyRyZXNvbHZlZERpciIgfSBlbHNlIHsgJHJlc29sdmVkRGlyIH0KICAgICAgICAgICAgW1N5c3RlbS5FbnZpcm9ubWVudF06OlNldEVudmlyb25tZW50VmFyaWFibGUoIlBhdGgiLCAkbmV3UGF0aCwgIlVzZXIiKQogICAgICAgICAgICAkZW52OlBhdGggPSBbU3lzdGVtLkVudmlyb25tZW50XTo6R2V0RW52aXJvbm1lbnRWYXJpYWJsZSgiUGF0aCIsIk1hY2hpbmUiKSArICI7IiArIFtTeXN0ZW0uRW52aXJvbm1lbnRdOjpHZXRFbnZpcm9ubWVudFZhcmlhYmxlKCJQYXRoIiwiVXNlciIpCiAgICAgICAgICAgIFdyaXRlLUhvc3QgIkFEQiBzdWNjZXNzZnVsbHkgYWRkZWQgdG8gUEFUSCEiIC1Gb3JlZ3JvdW5kQ29sb3IgR3JlZW4KICAgICAgICB9CiAgICB9IGNhdGNoIHsKICAgICAgICBXcml0ZS1Ib3N0ICJOb3RlOiBDb3VsZCBub3QgYXV0b21hdGljYWxseSB1cGRhdGUgVXNlciBQQVRIOiAkXyIgLUZvcmVncm91bmRDb2xvciBZZWxsb3cKICAgIH0KfQoKIyBDaGVjayBpZiBhZGIgaXMgaW4gUEFUSAppZiAoIShHZXQtQ29tbWFuZCBhZGIgLUVycm9yQWN0aW9uIFNpbGVudGx5Q29udGludWUpKSB7CiAgICBXcml0ZS1Ib3N0ICJBREIgaXMgbm90IGluIFBBVEguIENoZWNraW5nIGxvY2FsIHBsYXRmb3JtLXRvb2xzLi4uIiAtRm9yZWdyb3VuZENvbG9yIFllbGxvdwogICAgCiAgICBpZiAoVGVzdC1QYXRoICIuXHBsYXRmb3JtLXRvb2xzXGFkYi5leGUiKSB7CiAgICAgICAgJGFkYkNtZCA9ICIuXHBsYXRmb3JtLXRvb2xzXGFkYi5leGUiCiAgICAgICAgV3JpdGUtSG9zdCAiRm91bmQgbG9jYWwgQURCIGluIHBsYXRmb3JtLXRvb2xzIGZvbGRlci4iIC1Gb3JlZ3JvdW5kQ29sb3IgR3JlZW4KICAgICAgICBBZGQtUGF0aFRvVXNlckVudmlyb25tZW50ICIuXHBsYXRmb3JtLXRvb2xzIgogICAgfSBlbHNlIHsKICAgICAgICBXcml0ZS1Ib3N0ICJUcnlpbmcgdG8gaW5zdGFsbCBBREIgdmlhIHdpbmdldC4uLiIgLUZvcmVncm91bmRDb2xvciBDeWFuCiAgICAgICAgaWYgKEdldC1Db21tYW5kIHdpbmdldCAtRXJyb3JBY3Rpb24gU2lsZW50bHlDb250aW51ZSkgewogICAgICAgICAgICB0cnkgewogICAgICAgICAgICAgICAgd2luZ2V0IGluc3RhbGwgR29vZ2xlLkFkYiAtLXNpbGVudCAtLWFjY2VwdC1zb3VyY2UtYWdyZWVtZW50cyAtLWFjY2VwdC1wYWNrYWdlLWFncmVlbWVudHMgfCBPdXQtTnVsbAogICAgICAgICAgICAgICAgJGVudjpQYXRoID0gW1N5c3RlbS5FbnZpcm9ubWVudF06OkdldEVudmlyb25tZW50VmFyaWFibGUoIlBhdGgiLCJNYWNoaW5lIikgKyAiOyIgKyBbU3lzdGVtLkVudmlyb25tZW50XTo6R2V0RW52aXJvbm1lbnRWYXJpYWJsZSgiUGF0aCIsIlVzZXIiKQogICAgICAgICAgICB9IGNhdGNoIHt9CiAgICAgICAgfQoKICAgICAgICBpZiAoR2V0LUNvbW1hbmQgYWRiIC1FcnJvckFjdGlvbiBTaWxlbnRseUNvbnRpbnVlKSB7CiAgICAgICAgICAgICRhZGJDbWQgPSAiYWRiIgogICAgICAgICAgICBXcml0ZS1Ib3N0ICJBREIgaW5zdGFsbGVkIHZpYSB3aW5nZXQgc3VjY2Vzc2Z1bGx5ISIgLUZvcmVncm91bmRDb2xvciBHcmVlbgogICAgICAgIH0gZWxzZSB7CiAgICAgICAgICAgIFdyaXRlLUhvc3QgIndpbmdldCB1bmF2YWlsYWJsZSBvciBwZW5kaW5nLiBEb3dubG9hZGluZyBvZmZpY2lhbCBBbmRyb2lkIFNESyBQbGF0Zm9ybSBUb29scy4uLiIgLUZvcmVncm91bmRDb2xvciBZZWxsb3cKICAgICAgICAgICAgJHVybCA9ICJodHRwczovL2RsLmdvb2dsZS5jb20vYW5kcm9pZC9yZXBvc2l0b3J5L3BsYXRmb3JtLXRvb2xzLWxhdGVzdC13aW5kb3dzLnppcCIKICAgICAgICAgICAgJG91dHB1dCA9ICIuXHBsYXRmb3JtLXRvb2xzLnppcCIKICAgICAgICAgICAgdHJ5IHsKICAgICAgICAgICAgICAgIEludm9rZS1XZWJSZXF1ZXN0IC1VcmkgJHVybCAtT3V0RmlsZSAkb3V0cHV0CiAgICAgICAgICAgICAgICBFeHBhbmQtQXJjaGl2ZSAtUGF0aCAkb3V0cHV0IC1EZXN0aW5hdGlvblBhdGggIi4iIC1Gb3JjZQogICAgICAgICAgICAgICAgUmVtb3ZlLUl0ZW0gJG91dHB1dAogICAgICAgICAgICAgICAgaWYgKFRlc3QtUGF0aCAiLlxwbGF0Zm9ybS10b29sc1xhZGIuZXhlIikgewogICAgICAgICAgICAgICAgICAgICRhZGJDbWQgPSAiLlxwbGF0Zm9ybS10b29sc1xhZGIuZXhlIgogICAgICAgICAgICAgICAgICAgIFdyaXRlLUhvc3QgIkFEQiBkb3dubG9hZGVkIGFuZCBleHRyYWN0ZWQgc3VjY2Vzc2Z1bGx5ISIgLUZvcmVncm91bmRDb2xvciBHcmVlbgogICAgICAgICAgICAgICAgICAgIEFkZC1QYXRoVG9Vc2VyRW52aXJvbm1lbnQgIi5ccGxhdGZvcm0tdG9vbHMiCiAgICAgICAgICAgICAgICB9IGVsc2UgewogICAgICAgICAgICAgICAgICAgIFdyaXRlLUhvc3QgIkVycm9yOiBGYWlsZWQgdG8gZXh0cmFjdCBwbGF0Zm9ybS10b29scy4iIC1Gb3JlZ3JvdW5kQ29sb3IgUmVkCiAgICAgICAgICAgICAgICAgICAgUGF1c2UKICAgICAgICAgICAgICAgICAgICBFeGl0CiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgIH0gY2F0Y2ggewogICAgICAgICAgICAgICAgV3JpdGUtSG9zdCAiRXJyb3I6IENvdWxkIG5vdCBkb3dubG9hZCBBREIuIFBsZWFzZSBpbnN0YWxsIEFEQiBvciBwbGF0Zm9ybS10b29scyBtYW51YWxseS4iIC1Gb3JlZ3JvdW5kQ29sb3IgUmVkCiAgICAgICAgICAgICAgICBQYXVzZQogICAgICAgICAgICAgICAgRXhpdAogICAgICAgICAgICB9CiAgICAgICAgfQogICAgfQp9IGVsc2UgewogICAgaWYgKFRlc3QtUGF0aCAiLlxwbGF0Zm9ybS10b29sc1xhZGIuZXhlIikgewogICAgICAgIEFkZC1QYXRoVG9Vc2VyRW52aXJvbm1lbnQgIi5ccGxhdGZvcm0tdG9vbHMiCiAgICB9Cn0KCiMgQWRkIEMjIGhlbHBlciBmb3IgV2luMzIgbG93LWxhdGVuY3kga2V5IGV2ZW50cyB3aXRoIERpcmVjdFgvRGlyZWN0SW5wdXQgSGFyZHdhcmUgU2NhbkNvZGUgc3VwcG9ydAppZiAoISgiVGFpa29LZXlib2FyZCIgLWFzIFt0eXBlXSkpIHsKICAgICRTaWduYXR1cmUgPSBAIgp1c2luZyBTeXN0ZW07CnVzaW5nIFN5c3RlbS5SdW50aW1lLkludGVyb3BTZXJ2aWNlczsKCnB1YmxpYyBjbGFzcyBUYWlrb0tleWJvYXJkIHsKICAgIFtEbGxJbXBvcnQoInVzZXIzMi5kbGwiKV0KICAgIHB1YmxpYyBzdGF0aWMgZXh0ZXJuIHZvaWQga2V5YmRfZXZlbnQoYnl0ZSBiVmssIGJ5dGUgYlNjYW4sIHVpbnQgZHdGbGFncywgVUludFB0ciBkd0V4dHJhSW5mbyk7CgogICAgW0RsbEltcG9ydCgidXNlcjMyLmRsbCIpXQogICAgcHVibGljIHN0YXRpYyBleHRlcm4gdWludCBNYXBWaXJ0dWFsS2V5KHVpbnQgdUNvZGUsIHVpbnQgdU1hcFR5cGUpOwoKICAgIFtEbGxJbXBvcnQoInVzZXIzMi5kbGwiLCBTZXRMYXN0RXJyb3IgPSB0cnVlKV0KICAgIHB1YmxpYyBzdGF0aWMgZXh0ZXJuIHVpbnQgU2VuZElucHV0KHVpbnQgbklucHV0cywgSW50UHRyIHBJbnB1dHMsIGludCBjYlNpemUpOwoKICAgIHByaXZhdGUgY29uc3QgdWludCBLRVlFVkVOVEZfS0VZVVAgPSAweDAwMDI7CgogICAgcHJpdmF0ZSBzdGF0aWMgdm9pZCBTZW5kRG93blJhdyhieXRlIHZrZXksIHVzaG9ydCBzY2FuQ29kZSkgewogICAgICAgIGtleWJkX2V2ZW50KHZrZXksIChieXRlKXNjYW5Db2RlLCAwLCBVSW50UHRyLlplcm8pOwoKICAgICAgICB0cnkgewogICAgICAgICAgICBpbnQgY2JTaXplID0gKEludFB0ci5TaXplID09IDgpID8gNDAgOiAyODsKICAgICAgICAgICAgYnl0ZVtdIGlucHV0Qnl0ZXMgPSBuZXcgYnl0ZVtjYlNpemVdOwogICAgICAgICAgICBCaXRDb252ZXJ0ZXIuR2V0Qnl0ZXMoKHVpbnQpMSkuQ29weVRvKGlucHV0Qnl0ZXMsIDApOyAvLyBJTlBVVF9LRVlCT0FSRAogICAgICAgICAgICBpbnQga2lPZmZzZXQgPSAoSW50UHRyLlNpemUgPT0gOCkgPyA4IDogNDsKICAgICAgICAgICAgQml0Q29udmVydGVyLkdldEJ5dGVzKHNjYW5Db2RlKS5Db3B5VG8oaW5wdXRCeXRlcywga2lPZmZzZXQgKyAyKTsgLy8gd1NjYW4KICAgICAgICAgICAgQml0Q29udmVydGVyLkdldEJ5dGVzKCh1aW50KTB4MDAwOCkuQ29weVRvKGlucHV0Qnl0ZXMsIGtpT2Zmc2V0ICsgNCk7IC8vIEtFWUVWRU5URl9TQ0FOQ09ERQogICAgICAgICAgICBHQ0hhbmRsZSBoYW5kbGUgPSBHQ0hhbmRsZS5BbGxvYyhpbnB1dEJ5dGVzLCBHQ0hhbmRsZVR5cGUuUGlubmVkKTsKICAgICAgICAgICAgU2VuZElucHV0KDEsIGhhbmRsZS5BZGRyT2ZQaW5uZWRPYmplY3QoKSwgY2JTaXplKTsKICAgICAgICAgICAgaGFuZGxlLkZyZWUoKTsKICAgICAgICB9IGNhdGNoIHt9CiAgICB9CgogICAgcHJpdmF0ZSBzdGF0aWMgdm9pZCBTZW5kVXBSYXcoYnl0ZSB2a2V5LCB1c2hvcnQgc2NhbkNvZGUpIHsKICAgICAgICBrZXliZF9ldmVudCh2a2V5LCAoYnl0ZSlzY2FuQ29kZSwgS0VZRVZFTlRGX0tFWVVQLCBVSW50UHRyLlplcm8pOwoKICAgICAgICB0cnkgewogICAgICAgICAgICBpbnQgY2JTaXplID0gKEludFB0ci5TaXplID09IDgpID8gNDAgOiAyODsKICAgICAgICAgICAgYnl0ZVtdIGlucHV0Qnl0ZXMgPSBuZXcgYnl0ZVtjYlNpemVdOwogICAgICAgICAgICBCaXRDb252ZXJ0ZXIuR2V0Qnl0ZXMoKHVpbnQpMSkuQ29weVRvKGlucHV0Qnl0ZXMsIDApOyAvLyBJTlBVVF9LRVlCT0FSRAogICAgICAgICAgICBpbnQga2lPZmZzZXQgPSAoSW50UHRyLlNpemUgPT0gOCkgPyA4IDogNDsKICAgICAgICAgICAgQml0Q29udmVydGVyLkdldEJ5dGVzKHNjYW5Db2RlKS5Db3B5VG8oaW5wdXRCeXRlcywga2lPZmZzZXQgKyAyKTsgLy8gd1NjYW4KICAgICAgICAgICAgQml0Q29udmVydGVyLkdldEJ5dGVzKCh1aW50KTB4MDAwYSkuQ29weVRvKGlucHV0Qnl0ZXMsIGtpT2Zmc2V0ICsgNCk7IC8vIEtFWUVWRU5URl9TQ0FOQ09ERSB8IEtFWUVWRU5URl9LRVlVUAogICAgICAgICAgICBHQ0hhbmRsZSBoYW5kbGUgPSBHQ0hhbmRsZS5BbGxvYyhpbnB1dEJ5dGVzLCBHQ0hhbmRsZVR5cGUuUGlubmVkKTsKICAgICAgICAgICAgU2VuZElucHV0KDEsIGhhbmRsZS5BZGRyT2ZQaW5uZWRPYmplY3QoKSwgY2JTaXplKTsKICAgICAgICAgICAgaGFuZGxlLkZyZWUoKTsKICAgICAgICB9IGNhdGNoIHt9CiAgICB9CgogICAgcHVibGljIHN0YXRpYyB2b2lkIERvd24oYnl0ZSB2a2V5KSB7CiAgICAgICAgdXNob3J0IHNjYW5Db2RlID0gKHVzaG9ydClNYXBWaXJ0dWFsS2V5KHZrZXksIDApOwogICAgICAgIFNlbmREb3duUmF3KHZrZXksIHNjYW5Db2RlKTsKICAgIH0KCiAgICBwdWJsaWMgc3RhdGljIHZvaWQgVXAoYnl0ZSB2a2V5KSB7CiAgICAgICAgdXNob3J0IHNjYW5Db2RlID0gKHVzaG9ydClNYXBWaXJ0dWFsS2V5KHZrZXksIDApOwogICAgICAgIFNlbmRVcFJhdyh2a2V5LCBzY2FuQ29kZSk7CiAgICB9Cn0KIkAKICAgIHRyeSB7CiAgICAgICAgQWRkLVR5cGUgLVR5cGVEZWZpbml0aW9uICRTaWduYXR1cmUgLUVycm9yQWN0aW9uIFN0b3AKICAgIH0gY2F0Y2ggewogICAgICAgIFdyaXRlLUhvc3QgIkZhaWxlZCB0byBjb21waWxlIGtleWJvYXJkIGhlbHBlcjogJF8iIC1Gb3JlZ3JvdW5kQ29sb3IgUmVkCiAgICB9Cn0KCldyaXRlLUhvc3QgIj09PSBUYWlrbyBDb250cm9sbGVyIFJlY2VpdmVyIGZvciBXaW5kb3dzID09PSIgLUZvcmVncm91bmRDb2xvciBHcmVlbgpXcml0ZS1Ib3N0ICJTZXR0aW5nIHVwIEFEQiBwb3J0IGZvcndhcmRpbmcgKHRjcDokcG9ydCkuLi4iIC1Gb3JlZ3JvdW5kQ29sb3IgQ3lhbgp0cnkgeyAmICRhZGJDbWQgZm9yd2FyZCAtLXJlbW92ZSB0Y3A6JHBvcnQgMj4kbnVsbCB9IGNhdGNoIHt9CgokZndkT3V0ID0gJiAkYWRiQ21kIGZvcndhcmQgdGNwOiRwb3J0IHRjcDokcG9ydCAyPiYxCmlmICgkTEFTVEVYSVRDT0RFIC1uZSAwKSB7CiAgICBXcml0ZS1Ib3N0ICJOb3RpY2UgZnJvbSBBREI6ICRmd2RPdXQiIC1Gb3JlZ3JvdW5kQ29sb3IgWWVsbG93CiAgICBXcml0ZS1Ib3N0ICJFbnN1cmUgQW5kcm9pZCBkZXZpY2UgaXMgY29ubmVjdGVkIHZpYSBVU0IgYW5kIFVTQiBkZWJ1Z2dpbmcgaXMgZW5hYmxlZCEiIC1Gb3JlZ3JvdW5kQ29sb3IgWWVsbG93Cn0KCldyaXRlLUhvc3QgIkNvbm5lY3RpbmcgdG8gQW5kcm9pZCBUYWlrbyBjb250cm9sbGVyIG9uIGxvY2FsaG9zdDokcG9ydC4uLiIgLUZvcmVncm91bmRDb2xvciBDeWFuCgp3aGlsZSAoJHRydWUpIHsKICAgICRjbGllbnQgPSAkbnVsbAogICAgdHJ5IHsKICAgICAgICAkY2xpZW50ID0gTmV3LU9iamVjdCBTeXN0ZW0uTmV0LlNvY2tldHMuVGNwQ2xpZW50CiAgICAgICAgJGNvbm5lY3RSZXN1bHQgPSAkY2xpZW50LkJlZ2luQ29ubmVjdCgiMTI3LjAuMC4xIiwgJHBvcnQsICRudWxsLCAkbnVsbCkKICAgICAgICAkc3VjY2VzcyA9ICRjb25uZWN0UmVzdWx0LkFzeW5jV2FpdEhhbmRsZS5XYWl0T25lKDMwMDAsICRmYWxzZSkKICAgICAgICBpZiAoISRzdWNjZXNzKSB7CiAgICAgICAgICAgICRjbGllbnQuQ2xvc2UoKQogICAgICAgICAgICB0aHJvdyAiQ29ubmVjdGlvbiB0aW1lb3V0IgogICAgICAgIH0KICAgICAgICAkY2xpZW50LkVuZENvbm5lY3QoJGNvbm5lY3RSZXN1bHQpCgogICAgICAgICRzdHJlYW0gPSAkY2xpZW50LkdldFN0cmVhbSgpCiAgICAgICAgJHN0cmVhbS5SZWFkVGltZW91dCA9IDMwMDAKICAgICAgICAkcmVhZGVyID0gTmV3LU9iamVjdCBTeXN0ZW0uSU8uU3RyZWFtUmVhZGVyKCRzdHJlYW0pCgogICAgICAgICMgUmVhZCBiYW5uZXIgdG8gdmVyaWZ5IHJlYWwgYXBwIGNvbm5lY3Rpb24KICAgICAgICAkYmFubmVyID0gJHJlYWRlci5SZWFkTGluZSgpCiAgICAgICAgaWYgKCRudWxsIC1lcSAkYmFubmVyKSB7CiAgICAgICAgICAgICRjbGllbnQuQ2xvc2UoKQogICAgICAgICAgICBXcml0ZS1Ib3N0ICJXYWl0aW5nIGZvciBBbmRyb2lkIGFwcCBjb25uZWN0aW9uLi4uIChyZXRyeWluZyBpbiAyIHNlY29uZHMpIiAtRm9yZWdyb3VuZENvbG9yIFllbGxvdwogICAgICAgICAgICBTdGFydC1TbGVlcCAtU2Vjb25kcyAyCiAgICAgICAgICAgIGNvbnRpbnVlCiAgICAgICAgfQoKICAgICAgICAkc3RyZWFtLlJlYWRUaW1lb3V0ID0gLTEKICAgICAgICBXcml0ZS1Ib3N0ICJDb25uZWN0ZWQgc3VjY2Vzc2Z1bGx5IHRvIFRhaWtvIEFwcCEgU3RhcnQgeW91ciBnYW1lIG5vdyEiIC1Gb3JlZ3JvdW5kQ29sb3IgR3JlZW4KICAgICAgICAKICAgICAgICB3aGlsZSAoJGNsaWVudC5Db25uZWN0ZWQpIHsKICAgICAgICAgICAgJGxpbmUgPSAkcmVhZGVyLlJlYWRMaW5lKCkKICAgICAgICAgICAgaWYgKCRudWxsIC1lcSAkbGluZSkgewogICAgICAgICAgICAgICAgV3JpdGUtSG9zdCAiRGlzY29ubmVjdGVkIGJ5IEFuZHJvaWQgYXBwLiIgLUZvcmVncm91bmRDb2xvciBZZWxsb3cKICAgICAgICAgICAgICAgIGJyZWFrCiAgICAgICAgICAgIH0KICAgICAgICAgICAgCiAgICAgICAgICAgICRsaW5lID0gJGxpbmUuVHJpbSgpCiAgICAgICAgICAgIGlmICgkbGluZS5MZW5ndGggLWVxIDApIHsgY29udGludWUgfQoKICAgICAgICAgICAgJHBhcnRzID0gJGxpbmUuU3BsaXQoJyAnKQogICAgICAgICAgICBpZiAoJHBhcnRzLkxlbmd0aCAtZ2UgMikgewogICAgICAgICAgICAgICAgJGFjdGlvbiA9ICRwYXJ0c1swXQogICAgICAgICAgICAgICAgZm9yICgkaSA9IDE7ICRpIC1sdCAkcGFydHMuTGVuZ3RoOyAkaSsrKSB7CiAgICAgICAgICAgICAgICAgICAgJGtleSA9ICRwYXJ0c1skaV0uVG9VcHBlcigpCiAgICAgICAgICAgICAgICAgICAgaWYgKCRrZXkuTGVuZ3RoIC1ndCAwKSB7CiAgICAgICAgICAgICAgICAgICAgICAgIFdyaXRlLUhvc3QgIltLRVldICRhY3Rpb24gLT4gJGtleSIgLUZvcmVncm91bmRDb2xvciBDeWFuCiAgICAgICAgICAgICAgICAgICAgICAgICR2a2V5ID0gW2J5dGVdW2NoYXJdJGtleVswXQogICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgaWYgKCRhY3Rpb24gLWVxICJET1dOIikgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgW1RhaWtvS2V5Ym9hcmRdOjpEb3duKCR2a2V5KQogICAgICAgICAgICAgICAgICAgICAgICB9IGVsc2VpZiAoJGFjdGlvbiAtZXEgIlVQIikgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgW1RhaWtvS2V5Ym9hcmRdOjpVcCgkdmtleSkKICAgICAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgfQogICAgICAgIH0KICAgIH0gY2F0Y2ggewogICAgICAgIFdyaXRlLUhvc3QgIldhaXRpbmcgZm9yIEFuZHJvaWQgYXBwIGNvbm5lY3Rpb24uLi4gKHJldHJ5aW5nIGluIDIgc2Vjb25kcykiIC1Gb3JlZ3JvdW5kQ29sb3IgWWVsbG93CiAgICB9IGZpbmFsbHkgewogICAgICAgIGlmICgkbnVsbCAtbmUgJGNsaWVudCkgewogICAgICAgICAgICB0cnkgeyAkY2xpZW50LkNsb3NlKCkgfSBjYXRjaCB7fQogICAgICAgIH0KICAgIH0KICAgIFN0YXJ0LVNsZWVwIC1TZWNvbmRzIDIKfQo=", android.util.Base64.DEFAULT), java.nio.charset.StandardCharsets.UTF_8)
+
+            var activeScriptTab by remember { mutableStateOf(0) } // 0 = Windows, 1 = macOS, 2 = Linux
             val clipboardManager = LocalClipboardManager.current
             val scriptText = when (activeScriptTab) {
                 0 -> powerShellScript
-                1 -> pythonScript
-                else -> bashScript
+                1 -> macOSScript
+                else -> linuxScript
             }
 
             CollapsibleSettingCard(
@@ -918,6 +1279,8 @@ fun SettingsPanel(
                                    "3. コピーした内容をPC側で任意のファイル名・指定された拡張子で保存します。\n" +
                                    "   ※ macOS / Linux版は初回実行時にファイルの実行権限（実行許可）の設定が必要です。\n" +
                                    "      (ファイルプロパティ/情報を見る画面、またはターミナルの chmod +x コマンド等から設定可能です)\n" +
+                                   "   ※ macOS版は初回実行時にキー入力送信のためアクセシビリティ権限の許可が必要です。\n" +
+                                   "      (システム設定の「プライバシーとセキュリティ」→「アクセシビリティ」からターミナルをONに設定可能です)\n" +
                                    "4. 保存したファイルを実行すると、ADB環境の自動構築・ポート転送・キー入力ツールの準備・接続まで全自動で行われます！",
                             fontSize = 10.sp,
                             color = if (isDark) Color.White else Color.DarkGray,
@@ -1252,7 +1615,7 @@ fun SettingsPanel(
                                 ) {
                                     Button(
                                         onClick = {
-                                            val newVal = (currentDonBig - 5).coerceIn(10, 100)
+                                            val newVal = (currentDonBig - 5).coerceIn(10, 300)
                                             onSettingsChanged(settings.copy(donBigNotePercent = newVal))
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEADCC9).invertIfDark(isDark)),
@@ -1264,7 +1627,7 @@ fun SettingsPanel(
 
                                     Button(
                                         onClick = {
-                                            val newVal = (currentDonBig + 5).coerceIn(10, 100)
+                                            val newVal = (currentDonBig + 5).coerceIn(10, 300)
                                             onSettingsChanged(settings.copy(donBigNotePercent = newVal))
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEADCC9).invertIfDark(isDark)),
@@ -1286,7 +1649,7 @@ fun SettingsPanel(
                                             donBigText = newValue
                                             val parsed = newValue.toIntOrNull()
                                             if (parsed != null) {
-                                                val clamped = parsed.coerceIn(10, 100)
+                                                val clamped = parsed.coerceIn(10, 300)
                                                 onSettingsChanged(settings.copy(donBigNotePercent = clamped))
                                             }
                                         },
@@ -1320,13 +1683,13 @@ fun SettingsPanel(
                                     color = Color(0xFF78350F).invertIfDark(isDark)
                                 )
                                 OutlinedButton(
-                                    onClick = { onSettingsChanged(settings.copy(katBigNotePercent = 50)) },
+                                    onClick = { onSettingsChanged(settings.copy(katBigNotePercent = 100)) },
                                     border = BorderStroke(1.dp, Color(0xFF78350F).copy(alpha = 0.3f).invertIfDark(isDark)),
                                     shape = RoundedCornerShape(6.dp),
                                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
                                     modifier = Modifier.height(26.dp)
                                 ) {
-                                    Text("初期値 (50%)", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFF78350F).invertIfDark(isDark))
+                                    Text("初期値 (100%)", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFF78350F).invertIfDark(isDark))
                                 }
                             }
 
@@ -1341,7 +1704,7 @@ fun SettingsPanel(
                                 ) {
                                     Button(
                                         onClick = {
-                                            val newVal = (currentKatBig - 5).coerceIn(10, 100)
+                                            val newVal = (currentKatBig - 5).coerceIn(10, 300)
                                             onSettingsChanged(settings.copy(katBigNotePercent = newVal))
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEADCC9).invertIfDark(isDark)),
@@ -1353,7 +1716,7 @@ fun SettingsPanel(
 
                                     Button(
                                         onClick = {
-                                            val newVal = (currentKatBig + 5).coerceIn(10, 100)
+                                            val newVal = (currentKatBig + 5).coerceIn(10, 300)
                                             onSettingsChanged(settings.copy(katBigNotePercent = newVal))
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEADCC9).invertIfDark(isDark)),
@@ -1375,7 +1738,7 @@ fun SettingsPanel(
                                             katBigText = newValue
                                             val parsed = newValue.toIntOrNull()
                                             if (parsed != null) {
-                                                val clamped = parsed.coerceIn(10, 100)
+                                                val clamped = parsed.coerceIn(10, 300)
                                                 onSettingsChanged(settings.copy(katBigNotePercent = clamped))
                                             }
                                         },
@@ -1391,11 +1754,45 @@ fun SettingsPanel(
                         }
 
                         Text(
-                            text = "※ 面は中心から指定%内、フチは内側(面との境界)から指定%内をタップすると大音符(両手)になります",
+                            text = "※ 面は中心から指定%内、フチは内側(面との境界)から指定%内をタップすると大音符(両手)になります (100%超えも設定可能)",
                             fontSize = 9.sp,
                             color = if (isDark) Color.LightGray else Color(0xFF92400E)
                         )
                     }
+                }
+
+                Divider(modifier = Modifier.padding(vertical = 12.dp), color = Color(0xFF78350F).copy(alpha = 0.10f).invertIfDark(isDark))
+
+                // Lightweight Rendering Mode (Effect OFF) Switch
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "描画軽量モード (エフェクトOFF)",
+                            fontSize = 12.sp,
+                            lineHeight = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF78350F).invertIfDark(isDark)
+                        )
+                        Text(
+                            text = "波紋エフェクトや毎フレームの回転アニメーション描画を省略し、高速連打時のCPU負荷とフレーム落ちを最小化します",
+                            fontSize = 10.sp,
+                            lineHeight = 13.sp,
+                            color = if (isDark) Color.White else Color.Gray
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Switch(
+                        checked = settings.lightweightRenderingMode,
+                        onCheckedChange = { onSettingsChanged(settings.copy(lightweightRenderingMode = it)) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color(0xFF78350F).invertIfDark(isDark),
+                            checkedTrackColor = Color(0xFFFED7AA).invertIfDark(isDark)
+                        )
+                    )
                 }
 
                 Divider(modifier = Modifier.padding(vertical = 12.dp), color = Color(0xFF78350F).copy(alpha = 0.10f).invertIfDark(isDark))
@@ -1434,7 +1831,16 @@ fun SettingsPanel(
             }
         }
 
-        // --- 4. Custom Key Configuration Card ---
+        // --- 4. Drum Presets Management Card (太鼓の設定の下に配置) ---
+        TaikoPresetSettingCard(
+            settings = settings,
+            onSettingsChanged = onSettingsChanged,
+            expandPresetCard = expandPresetCard,
+            onExpandPresetCardChange = { expandPresetCard = it },
+            isDark = isDark
+        )
+
+        // --- 5. Custom Key Configuration Card ---
         val activeEmulationMode = settings.activeEmulationMode
         CollapsibleSettingCard(
             title = if (activeEmulationMode == "gamepad") "🎮 キーマッピング設定 (ゲームパッド)" else "⌨️ キーマッピング設定 (キーボード)",
@@ -2276,21 +2682,40 @@ fun TaikoSizeSettingCard(
                     color = if (isDark) Color.LightGray else Color(0xFF92400E)
                 )
             }
+        }
+    }
+}
 
-            Divider(color = Color(0xFF78350F).copy(alpha = 0.1f).invertIfDark(isDark))
+@Composable
+fun TaikoPresetSettingCard(
+    settings: ControllerSettings,
+    onSettingsChanged: (ControllerSettings) -> Unit,
+    expandPresetCard: Boolean,
+    onExpandPresetCardChange: (Boolean) -> Unit,
+    isDark: Boolean
+) {
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val preset1 = if (isLandscape) settings.landscapePreset1 else settings.portraitPreset1
+    val preset2 = if (isLandscape) settings.landscapePreset2 else settings.portraitPreset2
+    val prefix = if (isLandscape) "横画面" else "縦画面"
 
-            // Orientation-specific Presets Section
+    CollapsibleSettingCard(
+        title = "💾 プリセット設定 (${prefix})",
+        subtitle = "配置・サイズ・大音符範囲の保存と一括切り替え",
+        isExpanded = expandPresetCard,
+        onExpandedChange = onExpandPresetCardChange,
+        isDarkTheme = isDark
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(
-                text = if (isLandscape) "📍 横画面用 プリセット設定" else "📍 縦画面用 プリセット設定",
+                text = if (isLandscape) "📍 横画面用 プリセット (サイズ・位置・面/フチ大音符)" else "📍 縦画面用 プリセット (サイズ・位置・面/フチ大音符)",
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF78350F).invertIfDark(isDark)
             )
 
-            val preset1 = if (isLandscape) settings.landscapePreset1 else settings.portraitPreset1
-            val preset2 = if (isLandscape) settings.landscapePreset2 else settings.portraitPreset2
-            val prefix = if (isLandscape) "横画面" else "縦画面"
-
+            // Preset 1
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -2376,6 +2801,7 @@ fun TaikoSizeSettingCard(
                 )
             }
 
+            // Preset 2
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -2783,12 +3209,15 @@ private fun ShizukuSettingsContent(
 
 private fun openUsbSettings(context: android.content.Context) {
     val intents = listOf(
+        // Direct USB details / preferences (Android 10+)
         android.content.Intent("android.settings.USB_PREFERENCES_SETTINGS"),
         android.content.Intent("android.settings.USB_DETAILS_SETTINGS"),
         android.content.Intent().apply { setClassName("com.android.settings", "com.android.settings.Settings\$UsbDetailsActivity") },
         android.content.Intent().apply { setClassName("com.android.settings", "com.android.settings.usb.UsbDetailsActivity") },
+        // Connected devices & connection preferences
         android.content.Intent("android.settings.CONNECTED_DEVICE_SETTINGS"),
-        android.content.Intent("android.settings.TETHER_SETTINGS"),
+        android.content.Intent().apply { setClassName("com.android.settings", "com.android.settings.Settings\$ConnectedDeviceDashboardActivity") },
+        // Fallback to main Android settings
         android.content.Intent(android.provider.Settings.ACTION_SETTINGS)
     )
     for (intent in intents) {
