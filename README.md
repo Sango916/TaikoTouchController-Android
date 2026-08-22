@@ -1,9 +1,7 @@
 # 太鼓タッチコントローラー (Taiko Touch Controller)
 
-Android端末が太鼓コントローラーへ変身！
+Android端末が太鼓コントローラーへ変身！  
 Android端末上はもちろん、PCへの入力送信も可能です。
-
-本プロジェクトのソースコードおよびアプリケーションは、**Google AI Studio** を活用して開発されています。
 
 ---
 
@@ -22,7 +20,6 @@ Android端末上はもちろん、PCへの入力送信も可能です。
 
 - **オーバーレイとフローティングバブル**
   - ゲーム画面の上にコントローラーや設定ボタンを重ねて表示するフローティングオーバーレイ機能
-  - 不透明度（透明度）の調整に対応
 
 ---
 
@@ -30,7 +27,7 @@ Android端末上はもちろん、PCへの入力送信も可能です。
 
 - **アプリ対応バージョン**: Android 8.0 (API レベル 26) 以上
 - **ターゲットSDK**: Android 14 (API レベル 34)
-- **PC受信対応OS**: Windows, Linux, macOS (動作未確認)
+- **受信対応OS(PC)**: Windows, Linux, macOS (動作未確認)
 
 ---
 
@@ -41,7 +38,7 @@ Android端末上はもちろん、PCへの入力送信も可能です。
   - Pixel 7 Pro (Android 17)
   - Pixel 3a (Evolution X 10.9 Android 15)
   - Thor (Android 13)
-- **動作確認OS**:
+- **動作確認OS(PC)**:
   - Windows 11 25H2
   - Ubuntu 26.04 LTS
 
