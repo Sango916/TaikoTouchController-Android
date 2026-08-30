@@ -119,7 +119,18 @@ class MainActivity : ComponentActivity() {
     private val shizukuInstalledAndRunning = mutableStateOf(false)
 
     private val shizukuListener = Shizuku.OnRequestPermissionResultListener { _, grantResult ->
-        shizukuPermissionGranted.value = (grantResult == android.content.pm.PackageManager.PERMISSION_GRANTED)
+        runOnUiThread {
+            try {
+                shizukuPermissionGranted.value = (grantResult == android.content.pm.PackageManager.PERMISSION_GRANTED)
+                if (shizukuPermissionGranted.value) {
+                    TaikoLogManager.log("Shizuku権限: 承認されました")
+                } else {
+                    TaikoLogManager.log("Shizuku権限: 拒否されました")
+                }
+            } catch (e: Throwable) {
+                android.util.Log.e("MainActivity", "Error in shizukuListener", e)
+            }
+        }
     }
 
     private val shizukuBinderReceivedListener = Shizuku.OnBinderReceivedListener {
@@ -131,6 +142,8 @@ class MainActivity : ComponentActivity() {
                     shizukuPermissionGranted.value = try {
                         Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED
                     } catch (_: Throwable) { false }
+                } else {
+                    shizukuPermissionGranted.value = false
                 }
             } catch (e: Throwable) {
                 android.util.Log.e("MainActivity", "Error in onBinderReceived", e)
@@ -194,17 +207,25 @@ class MainActivity : ComponentActivity() {
 
     private fun requestShizukuPermission() {
         try {
-            if (Shizuku.pingBinder()) {
-                if (Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            val ping = try { Shizuku.pingBinder() } catch (_: Throwable) { false }
+            if (ping) {
+                val isGranted = try {
+                    Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED
+                } catch (_: Throwable) { false }
+                if (isGranted) {
                     shizukuPermissionGranted.value = true
+                    Toast.makeText(this, "Shizuku権限は既に承認されています", Toast.LENGTH_SHORT).show()
                 } else {
                     Shizuku.requestPermission(1001)
                 }
             } else {
                 shizukuInstalledAndRunning.value = false
+                shizukuPermissionGranted.value = false
+                Toast.makeText(this, "Shizukuサービスが起動していません", Toast.LENGTH_SHORT).show()
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             android.util.Log.e("MainActivity", "Failed to request Shizuku permission", e)
+            Toast.makeText(this, "Shizuku権限の要求に失敗しました: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -218,12 +239,12 @@ class MainActivity : ComponentActivity() {
                 val playIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, uri)
                 startActivity(playIntent)
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             try {
                 val uri = android.net.Uri.parse("https://shizuku.rikka.app/")
                 val browserIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, uri)
                 startActivity(browserIntent)
-            } catch (ex: Exception) {
+            } catch (ex: Throwable) {
                 android.util.Log.e("MainActivity", "Failed to open Shizuku app/website", ex)
             }
         }
@@ -231,14 +252,16 @@ class MainActivity : ComponentActivity() {
 
     private fun refreshShizukuStatus() {
         try {
-            val ping = Shizuku.pingBinder()
+            val ping = try { Shizuku.pingBinder() } catch (_: Throwable) { false }
             shizukuInstalledAndRunning.value = ping
             if (ping) {
-                shizukuPermissionGranted.value = Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED
+                shizukuPermissionGranted.value = try {
+                    Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED
+                } catch (_: Throwable) { false }
             } else {
                 shizukuPermissionGranted.value = false
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             android.util.Log.e("MainActivity", "Failed to manual check Shizuku status", e)
         }
     }
@@ -823,33 +846,45 @@ class MainActivity : ComponentActivity() {
         when (settings.connectionMode) {
             "shizuku" -> {
                 if (key.isNotEmpty()) {
-                    val emulationMode = settings.shizukuEmulationMode
-                    adbClient?.setEmulationMode(emulationMode)
-                    adbClient?.setInjectionMethod(settings.injectionMethod)
-                    adbClient?.setGamepadKeyConfig(settings.gamepadKeyConfig)
-                    adbClient?.sendKeyEvent(part, key, isPressed, settings.simultaneousGroupingMs)
-                }
-            }
-            "usb-wired" -> {
-                if (key.isNotEmpty()) {
-                    tcpServer?.sendKeyEvent(key, isPressed)
-                }
-            }
-            "another_android" -> {
-                if (key.isNotEmpty()) {
-                    if (settings.anotherAndroidRole == "sender") {
-                        if (settings.anotherAndroidConnectionType == "bluetooth") {
-                            bluetoothSender?.sendKeyEvent(part, isPressed)
-                        } else {
-                            remoteSender?.sendKeyEvent(part, isPressed)
-                        }
-                    } else {
-                        // Receiver mode: Inject locally on this device via Shizuku
+                    try {
                         val emulationMode = settings.shizukuEmulationMode
                         adbClient?.setEmulationMode(emulationMode)
                         adbClient?.setInjectionMethod(settings.injectionMethod)
                         adbClient?.setGamepadKeyConfig(settings.gamepadKeyConfig)
                         adbClient?.sendKeyEvent(part, key, isPressed, settings.simultaneousGroupingMs)
+                    } catch (t: Throwable) {
+                        android.util.Log.e("MainActivity", "Error sending key event via Shizuku", t)
+                    }
+                }
+            }
+            "usb-wired" -> {
+                if (key.isNotEmpty()) {
+                    try {
+                        tcpServer?.sendKeyEvent(key, isPressed)
+                    } catch (t: Throwable) {
+                        android.util.Log.e("MainActivity", "Error sending key event via TCP server", t)
+                    }
+                }
+            }
+            "another_android" -> {
+                if (key.isNotEmpty()) {
+                    try {
+                        if (settings.anotherAndroidRole == "sender") {
+                            if (settings.anotherAndroidConnectionType == "bluetooth") {
+                                bluetoothSender?.sendKeyEvent(part, isPressed)
+                            } else {
+                                remoteSender?.sendKeyEvent(part, isPressed)
+                            }
+                        } else {
+                            // Receiver mode: Inject locally on this device via Shizuku
+                            val emulationMode = settings.shizukuEmulationMode
+                            adbClient?.setEmulationMode(emulationMode)
+                            adbClient?.setInjectionMethod(settings.injectionMethod)
+                            adbClient?.setGamepadKeyConfig(settings.gamepadKeyConfig)
+                            adbClient?.sendKeyEvent(part, key, isPressed, settings.simultaneousGroupingMs)
+                        }
+                    } catch (t: Throwable) {
+                        android.util.Log.e("MainActivity", "Error sending key event in another_android mode", t)
                     }
                 }
             }
@@ -1562,11 +1597,15 @@ class MainActivity : ComponentActivity() {
                         if (keyChar.isNotEmpty()) part to keyChar else null
                     }
                     if (items.isNotEmpty()) {
-                        val emulationMode = settings.shizukuEmulationMode
-                        adbClient?.setEmulationMode(emulationMode)
-                        adbClient?.setInjectionMethod(settings.injectionMethod)
-                        adbClient?.setGamepadKeyConfig(settings.gamepadKeyConfig)
-                        adbClient?.sendMultiKeyEvents(items, actionIsPressed, settings.simultaneousGroupingMs)
+                        try {
+                            val emulationMode = settings.shizukuEmulationMode
+                            adbClient?.setEmulationMode(emulationMode)
+                            adbClient?.setInjectionMethod(settings.injectionMethod)
+                            adbClient?.setGamepadKeyConfig(settings.gamepadKeyConfig)
+                            adbClient?.sendMultiKeyEvents(items, actionIsPressed, settings.simultaneousGroupingMs)
+                        } catch (t: Throwable) {
+                            android.util.Log.e("MainActivity", "Error sending multi key events via Shizuku", t)
+                        }
                         return
                     }
                 }

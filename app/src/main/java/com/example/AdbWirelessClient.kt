@@ -149,9 +149,14 @@ class AdbWirelessClient {
             var os: DataOutputStream? = null
 
             // 1. Try Shizuku first if authorized
-            if (Shizuku.pingBinder() && 
-                Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                
+            val isShizukuAvailable = try {
+                Shizuku.pingBinder() && 
+                Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED
+            } catch (t: Throwable) {
+                false
+            }
+
+            if (isShizukuAvailable) {
                 // Try Shizuku Plan A: /system/bin/uinput
                 try {
                     Log.d("AdbWireless", "Starting uinput via Shizuku '/system/bin/uinput -'")
@@ -177,7 +182,7 @@ class AdbWirelessClient {
                         try { out.close() } catch (e: Exception) {}
                         try { proc.destroy() } catch (e: Exception) {}
                     }
-                } catch (e: Exception) {
+                } catch (e: Throwable) {
                     Log.e("AdbWireless", "Shizuku plan A exception", e)
                 }
 
@@ -207,7 +212,7 @@ class AdbWirelessClient {
                             try { out.close() } catch (e: Exception) {}
                             try { proc.destroy() } catch (e: Exception) {}
                         }
-                    } catch (e: Exception) {
+                    } catch (e: Throwable) {
                         Log.e("AdbWireless", "Shizuku plan B exception", e)
                         TaikoLogManager.log("uinput ERR: Shizuku startup error: ${e.message}")
                     }
@@ -334,7 +339,7 @@ class AdbWirelessClient {
     private fun getPersistentShell(): DataOutputStream? {
         val isAlive = try {
             persistentShellProcess?.isAlive ?: false
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             false
         }
 
@@ -342,23 +347,34 @@ class AdbWirelessClient {
         
         cleanupPersistentShell()
         try {
+            val isShizukuAvailable = try {
+                Shizuku.pingBinder() && 
+                Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED
+            } catch (t: Throwable) {
+                false
+            }
+
             val p = try {
-                if (Shizuku.pingBinder() && 
-                    Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                if (isShizukuAvailable) {
                     Log.d("AdbWireless", "Starting persistent shell via Shizuku")
                     createShizukuProcess(arrayOf("sh"))
+                } else if (checkRoot()) {
+                    Log.d("AdbWireless", "Starting persistent shell via Root")
+                    Runtime.getRuntime().exec(arrayOf("su"))
                 } else {
                     null
                 }
-            } catch (e: Exception) {
-                Log.e("AdbWireless", "Shizuku persistent shell start failed", e)
+            } catch (e: Throwable) {
+                Log.e("AdbWireless", "Persistent shell process start failed", e)
                 null
-            } ?: Runtime.getRuntime().exec("sh")
+            }
 
-            persistentShellProcess = p
-            persistentShellWriter = DataOutputStream(p.outputStream)
-            Log.d("AdbWireless", "Persistent shell process started successfully.")
-        } catch (e: Exception) {
+            if (p != null) {
+                persistentShellProcess = p
+                persistentShellWriter = DataOutputStream(p.outputStream)
+                Log.d("AdbWireless", "Persistent shell process started successfully.")
+            }
+        } catch (e: Throwable) {
             Log.e("AdbWireless", "Failed to start persistent local shell", e)
         }
         return persistentShellWriter
@@ -441,12 +457,24 @@ class AdbWirelessClient {
 
     private fun injectEventViaShizuku(androidKeycode: Int, isPressed: Boolean): Boolean {
         try {
-            if (!Shizuku.pingBinder() || Shizuku.checkSelfPermission() != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            val isShizukuAvailable = try {
+                Shizuku.pingBinder() && Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED
+            } catch (t: Throwable) {
+                false
+            }
+            if (!isShizukuAvailable) {
+                iInputManagerInstance = null
+                injectMethod = null
                 return false
             }
 
             if (iInputManagerInstance == null) {
-                val rawBinder = rikka.shizuku.SystemServiceHelper.getSystemService("input")
+                val rawBinder = try {
+                    rikka.shizuku.SystemServiceHelper.getSystemService("input")
+                } catch (t: Throwable) {
+                    null
+                } ?: return false
+
                 val wrappedBinder = rikka.shizuku.ShizukuBinderWrapper(rawBinder)
                 
                 val stubClass = Class.forName("android.hardware.input.IInputManager${'$'}Stub")
@@ -470,7 +498,7 @@ class AdbWirelessClient {
                             android.view.KeyEvent.FLAG_FROM_SYSTEM, android.view.InputDevice.SOURCE_KEYBOARD
                         )
                         injectMethod?.invoke(iInputManagerInstance, upEvent, 0)
-                    } catch (_: Exception) {}
+                    } catch (_: Throwable) {}
                 }
                 activePressedKeycodes.add(androidKeycode)
             } else {
@@ -501,7 +529,9 @@ class AdbWirelessClient {
                 Log.e("AdbWireless", "Shizuku IInputManager injectInputEvent returned false")
             }
             return success
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            iInputManagerInstance = null
+            injectMethod = null
             Log.e("AdbWireless", "Failed to inject event via Shizuku IInputManager reflection", e)
             return false
         }
@@ -526,96 +556,100 @@ class AdbWirelessClient {
         val deviceId = if (emulationMode == "gamepad") 1 else 2
 
         inputExecutor.execute {
-            var injectionSuccess = false
+            try {
+                var injectionSuccess = false
 
-            // 1. Try high-fidelity Shizuku/Root virtual hardware injection (uinput)
-            if (injectionMethod == "uinput" && checkAndRegisterUinput()) {
-                try {
-                    val eventsList = mutableListOf<Int>()
-                    items.forEach { (part, key) ->
-                        val sc = if (emulationMode == "gamepad") getGamepadScanCode(part) else getKeyboardScancode(key)
-                        if (value == 1 && activePressedScancodes.contains(sc)) {
+                // 1. Try high-fidelity Shizuku/Root virtual hardware injection (uinput)
+                if (injectionMethod == "uinput" && checkAndRegisterUinput()) {
+                    try {
+                        val eventsList = mutableListOf<Int>()
+                        items.forEach { (part, key) ->
+                            val sc = if (emulationMode == "gamepad") getGamepadScanCode(part) else getKeyboardScancode(key)
+                            if (value == 1 && activePressedScancodes.contains(sc)) {
+                                eventsList.add(1) // EV_KEY
+                                eventsList.add(sc)
+                                eventsList.add(0) // EV_RELEASE
+                            }
                             eventsList.add(1) // EV_KEY
                             eventsList.add(sc)
-                            eventsList.add(0) // EV_RELEASE
+                            eventsList.add(value)
+                            if (value == 1) activePressedScancodes.add(sc) else activePressedScancodes.remove(sc)
                         }
-                        eventsList.add(1) // EV_KEY
-                        eventsList.add(sc)
-                        eventsList.add(value)
-                        if (value == 1) activePressedScancodes.add(sc) else activePressedScancodes.remove(sc)
-                    }
-                    // SYN_REPORT
-                    eventsList.add(0)
-                    eventsList.add(0)
-                    eventsList.add(0)
+                        // SYN_REPORT
+                        eventsList.add(0)
+                        eventsList.add(0)
+                        eventsList.add(0)
 
-                    val injectJson = """{"id":$deviceId,"command":"inject","events":[${eventsList.joinToString(",")}]}"""
+                        val injectJson = """{"id":$deviceId,"command":"inject","events":[${eventsList.joinToString(",")}]}"""
 
-                    rootOutputStream?.write((",\n" + injectJson + "\n").toByteArray(Charsets.UTF_8))
-                    rootOutputStream?.flush()
-                    Log.d("AdbWireless", "uinput multi injected ($emulationMode): ${items.size} keys (value: $value)")
-                    injectionSuccess = true
-                } catch (e: Exception) {
-                    Log.e("AdbWireless", "Failed to inject uinput multi event, resetting process", e)
-                    cleanupRootProcess()
-                    injectionSuccess = false
-                }
-            }
-
-            // 2. Try Direct Shizuku System API Injection (if selected or if uinput failed)
-            if (!injectionSuccess && (injectionMethod == "inject" || injectionMethod == "uinput")) {
-                var countSuccess = 0
-                items.forEach { (part, key) ->
-                    val androidKeycodeStr = if (emulationMode == "gamepad") {
-                        getGamepadAndroidKeycode(part)
-                    } else {
-                        getAndroidKeycode(key)
-                    }
-                    val androidKeycode = androidKeycodeStr.toIntOrNull() ?: 0
-                    if (androidKeycode > 0) {
-                        if (injectEventViaShizuku(androidKeycode, isPressed)) {
-                            countSuccess++
-                        }
+                        rootOutputStream?.write((",\n" + injectJson + "\n").toByteArray(Charsets.UTF_8))
+                        rootOutputStream?.flush()
+                        Log.d("AdbWireless", "uinput multi injected ($emulationMode): ${items.size} keys (value: $value)")
+                        injectionSuccess = true
+                    } catch (e: Exception) {
+                        Log.e("AdbWireless", "Failed to inject uinput multi event, resetting process", e)
+                        cleanupRootProcess()
+                        injectionSuccess = false
                     }
                 }
-                if (countSuccess > 0) injectionSuccess = true
-            }
 
-            // 3. Fallback to standard command-line injection
-            if (!injectionSuccess) {
-                val androidKeycodes = items.map { (part, key) ->
-                    if (emulationMode == "gamepad") {
-                        getGamepadAndroidKeycode(part)
-                    } else {
-                        getAndroidKeycode(key)
-                    }
-                }.filter { it.isNotEmpty() && it != "0" }
-
-                if (androidKeycodes.isNotEmpty()) {
-                    if (androidKeycodes.size == 1) {
-                        if (groupingMs > 0) {
-                            queueAndroidKeycode(androidKeycodes[0], isPressed, groupingMs)
+                // 2. Try Direct Shizuku System API Injection (if selected or if uinput failed)
+                if (!injectionSuccess && (injectionMethod == "inject" || injectionMethod == "uinput")) {
+                    var countSuccess = 0
+                    items.forEach { (part, key) ->
+                        val androidKeycodeStr = if (emulationMode == "gamepad") {
+                            getGamepadAndroidKeycode(part)
                         } else {
-                            dispatchSingleAndroidKeycode(androidKeycodes[0], isPressed)
+                            getAndroidKeycode(key)
                         }
-                    } else {
-                        val actionArg = if (isPressed) "--down" else "--up"
-                        val codesStr = androidKeycodes.joinToString(" ")
-                        val writer = getPersistentShell()
-                        if (writer != null) {
-                            try {
-                                writer.writeBytes("cmd input keyevent $actionArg $codesStr\n")
-                                writer.flush()
-                                Log.d("AdbWireless", "Persistent shell multi execution: cmd input keyevent $actionArg $codesStr")
-                            } catch (e: Exception) {
-                                cleanupPersistentShell()
-                                executeOneShotFallback(androidKeycodes, isPressed)
+                        val androidKeycode = androidKeycodeStr.toIntOrNull() ?: 0
+                        if (androidKeycode > 0) {
+                            if (injectEventViaShizuku(androidKeycode, isPressed)) {
+                                countSuccess++
+                            }
+                        }
+                    }
+                    if (countSuccess > 0) injectionSuccess = true
+                }
+
+                // 3. Fallback to standard command-line injection
+                if (!injectionSuccess) {
+                    val androidKeycodes = items.map { (part, key) ->
+                        if (emulationMode == "gamepad") {
+                            getGamepadAndroidKeycode(part)
+                        } else {
+                            getAndroidKeycode(key)
+                        }
+                    }.filter { it.isNotEmpty() && it != "0" }
+
+                    if (androidKeycodes.isNotEmpty()) {
+                        if (androidKeycodes.size == 1) {
+                            if (groupingMs > 0) {
+                                queueAndroidKeycode(androidKeycodes[0], isPressed, groupingMs)
+                            } else {
+                                dispatchSingleAndroidKeycode(androidKeycodes[0], isPressed)
                             }
                         } else {
-                            executeOneShotFallback(androidKeycodes, isPressed)
+                            val actionArg = if (isPressed) "--down" else "--up"
+                            val codesStr = androidKeycodes.joinToString(" ")
+                            val writer = getPersistentShell()
+                            if (writer != null) {
+                                try {
+                                    writer.writeBytes("cmd input keyevent $actionArg $codesStr\n")
+                                    writer.flush()
+                                    Log.d("AdbWireless", "Persistent shell multi execution: cmd input keyevent $actionArg $codesStr")
+                                } catch (e: Exception) {
+                                    cleanupPersistentShell()
+                                    executeOneShotFallback(androidKeycodes, isPressed)
+                                }
+                            } else {
+                                executeOneShotFallback(androidKeycodes, isPressed)
+                            }
                         }
                     }
                 }
+            } catch (t: Throwable) {
+                Log.e("AdbWireless", "Unexpected error in sendMultiKeyEvents", t)
             }
         }
     }
@@ -697,16 +731,24 @@ class AdbWirelessClient {
             cmd.addAll(keycodes)
             val cmdArray = cmd.toTypedArray()
 
-            if (Shizuku.pingBinder() && 
-                Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            val isShizukuAvailable = try {
+                Shizuku.pingBinder() && 
+                Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED
+            } catch (t: Throwable) {
+                false
+            }
+
+            if (isShizukuAvailable) {
                 createShizukuProcess(cmdArray)
                 TaikoLogManager.log("Shizuku One-shot: cmd input keyevent $actionArg ${keycodes.joinToString(" ")}")
+            } else if (checkRoot()) {
+                Runtime.getRuntime().exec(arrayOf("su", "-c", "cmd input keyevent $actionArg ${keycodes.joinToString(" ")}"))
+                TaikoLogManager.log("Root One-shot: cmd input keyevent $actionArg ${keycodes.joinToString(" ")}")
             } else {
-                Runtime.getRuntime().exec(cmdArray)
-                TaikoLogManager.log("Fallback Exec: cmd input keyevent $actionArg ${keycodes.joinToString(" ")}")
+                Log.w("AdbWireless", "Cannot inject keyevent: Shizuku is not running / permitted and device is not rooted.")
             }
-            Log.d("AdbWireless", "One-shot fallback execution triggered: cmd input keyevent $actionArg ${keycodes.joinToString(" ")}")
-        } catch (e: Exception) {
+            Log.d("AdbWireless", "One-shot fallback execution completed: cmd input keyevent $actionArg ${keycodes.joinToString(" ")}")
+        } catch (e: Throwable) {
             Log.e("AdbWireless", "Failed to run local one-shot fallback keyevent", e)
             TaikoLogManager.log("Fallback ERR: exec failed: ${e.message}")
         }
