@@ -124,17 +124,28 @@ class MainActivity : ComponentActivity() {
 
     private val shizukuBinderReceivedListener = Shizuku.OnBinderReceivedListener {
         runOnUiThread {
-            shizukuInstalledAndRunning.value = Shizuku.pingBinder()
-            if (Shizuku.pingBinder()) {
-                shizukuPermissionGranted.value = Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED
+            try {
+                val ping = try { Shizuku.pingBinder() } catch (_: Throwable) { false }
+                shizukuInstalledAndRunning.value = ping
+                if (ping) {
+                    shizukuPermissionGranted.value = try {
+                        Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    } catch (_: Throwable) { false }
+                }
+            } catch (e: Throwable) {
+                android.util.Log.e("MainActivity", "Error in onBinderReceived", e)
             }
         }
     }
 
     private val shizukuBinderDeadListener = Shizuku.OnBinderDeadListener {
         runOnUiThread {
-            shizukuInstalledAndRunning.value = false
-            shizukuPermissionGranted.value = false
+            try {
+                shizukuInstalledAndRunning.value = false
+                shizukuPermissionGranted.value = false
+            } catch (e: Throwable) {
+                android.util.Log.e("MainActivity", "Error in onBinderDead", e)
+            }
         }
     }
 
@@ -327,14 +338,16 @@ class MainActivity : ComponentActivity() {
             Shizuku.addBinderReceivedListenerSticky(shizukuBinderReceivedListener)
             Shizuku.addBinderDeadListener(shizukuBinderDeadListener)
             Shizuku.addRequestPermissionResultListener(shizukuListener)
-            shizukuInstalledAndRunning.value = Shizuku.pingBinder()
-            if (Shizuku.pingBinder()) {
-                shizukuPermissionGranted.value = Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED
+            shizukuInstalledAndRunning.value = try { Shizuku.pingBinder() } catch (_: Throwable) { false }
+            if (shizukuInstalledAndRunning.value) {
+                shizukuPermissionGranted.value = try {
+                    Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED
+                } catch (_: Throwable) { false }
                 TaikoLogManager.log("Shizuku status: Installed & Running (Granted=${shizukuPermissionGranted.value})")
             } else {
                 TaikoLogManager.log("Shizuku status: Not running or not installed")
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             android.util.Log.e("MainActivity", "Shizuku initialization failed", e)
             TaikoLogManager.log("Shizuku init failed: ${e.message}")
         }
@@ -343,12 +356,14 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             while (isActive) {
                 try {
-                    val ping = Shizuku.pingBinder()
+                    val ping = try { Shizuku.pingBinder() } catch (_: Throwable) { false }
                     if (shizukuInstalledAndRunning.value != ping) {
                         shizukuInstalledAndRunning.value = ping
                     }
                     if (ping) {
-                        val granted = Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED
+                        val granted = try {
+                            Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED
+                        } catch (_: Throwable) { false }
                         if (shizukuPermissionGranted.value != granted) {
                             shizukuPermissionGranted.value = granted
                         }
@@ -357,7 +372,7 @@ class MainActivity : ComponentActivity() {
                             shizukuPermissionGranted.value = false
                         }
                     }
-                } catch (e: Exception) {
+                } catch (e: Throwable) {
                     android.util.Log.e("MainActivity", "Error in Shizuku status polling", e)
                 }
                 delay(1000)
@@ -1721,18 +1736,24 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        val settings = settingsState.value
-        if (settings.connectionMode == "usb-wired") {
-            startTcpServer()
-        } else if (settings.connectionMode == "another_android") {
-            if (settings.anotherAndroidConnectionType == "bluetooth") {
-                refreshBluetoothDevices()
-                if (settings.anotherAndroidRole == "receiver") {
-                    startBluetoothReceiver()
+        try {
+            val settings = settingsState.value
+            if (settings.connectionMode == "usb-wired") {
+                startTcpServer()
+            } else if (settings.connectionMode == "another_android") {
+                if (settings.anotherAndroidConnectionType == "bluetooth") {
+                    if (TaikoBluetoothManager.hasBluetoothPermissions(this)) {
+                        refreshBluetoothDevices()
+                        if (settings.anotherAndroidRole == "receiver") {
+                            startBluetoothReceiver()
+                        }
+                    }
+                } else if (settings.anotherAndroidRole == "receiver") {
+                    startRemoteReceiver()
                 }
-            } else if (settings.anotherAndroidRole == "receiver") {
-                startRemoteReceiver()
             }
+        } catch (e: Throwable) {
+            android.util.Log.e("MainActivity", "Error in onStart", e)
         }
     }
 
