@@ -5,6 +5,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import android.widget.Toast
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
@@ -59,6 +60,14 @@ fun SettingsPanel(
     remoteSenderStatus: String = "disconnected",
     remoteReceiverClientsCount: Int = 0,
     onConnectRemoteSender: () -> Unit = {},
+    bluetoothSenderStatus: String = "disconnected",
+    bluetoothConnectedDeviceName: String? = null,
+    bluetoothReceiverConnectedDevice: String? = null,
+    bluetoothPairedDevices: List<TaikoBluetoothManager.BluetoothDeviceInfo> = emptyList(),
+    onConnectBluetoothDevice: (address: String, name: String) -> Unit = { _, _ -> },
+    onDisconnectBluetooth: () -> Unit = {},
+    onRefreshBluetoothDevices: () -> Unit = {},
+    onOpenBluetoothSettings: () -> Unit = {},
     onResetConnection: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -250,6 +259,44 @@ fun SettingsPanel(
 
 
 
+        val context = LocalContext.current
+        var anotherAndroidTapCount by remember { mutableIntStateOf(0) }
+        var lastAnotherAndroidTapTime by remember { mutableLongStateOf(0L) }
+
+        val onAnotherAndroidTapped: () -> Unit = {
+            if (settings.connectionMode != "another_android") {
+                // 他のモードから「別のAndroid」に切り替えるタップはカウントせず、モード切り替えのみ行う
+                anotherAndroidTapCount = 0
+                onSettingsChanged(settings.copy(connectionMode = "another_android"))
+            } else {
+                val now = System.currentTimeMillis()
+                if (now - lastAnotherAndroidTapTime > 3500L) {
+                    anotherAndroidTapCount = 0
+                }
+                lastAnotherAndroidTapTime = now
+                anotherAndroidTapCount++
+
+                if (anotherAndroidTapCount >= 10) {
+                    val newShow = !settings.showWirelessOptions
+                    anotherAndroidTapCount = 0
+                    val updated = if (!newShow && settings.anotherAndroidConnectionType != "wired") {
+                        settings.copy(connectionMode = "another_android", showWirelessOptions = newShow, anotherAndroidConnectionType = "wired")
+                    } else {
+                        settings.copy(connectionMode = "another_android", showWirelessOptions = newShow)
+                    }
+                    onSettingsChanged(updated)
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        Toast.makeText(
+                            context.applicationContext,
+                            if (newShow) "🔓 隠し設定解放: 無線通信モード (Wi-Fi / Bluetooth) を出現させました！" else "🔒 無線通信モードを非表示にしました (USB有線固定)",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                    TaikoLogManager.log(if (newShow) "無線通信モード: 解放" else "無線通信モード: 非表示")
+                }
+            }
+        }
+
         // --- Connection Mode / Destination Card ---
         CollapsibleSettingCard(
             title = "🌐 接続先設定",
@@ -284,7 +331,11 @@ fun SettingsPanel(
                     val isSelected = settings.connectionMode == modeVal
                     Button(
                         onClick = {
-                            onSettingsChanged(settings.copy(connectionMode = modeVal))
+                            if (modeVal == "another_android") {
+                                onAnotherAndroidTapped()
+                            } else {
+                                onSettingsChanged(settings.copy(connectionMode = modeVal))
+                            }
                         },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (isSelected) Color(0xFF78350F).invertIfDark(isDark) else Color(0xFFEADCC9).invertIfDark(isDark),
@@ -340,18 +391,25 @@ fun SettingsPanel(
             var autoDiscoveryMessage by remember { mutableStateOf<String?>(null) }
             var showManualInput by remember { mutableStateOf(false) }
 
+            val connTypeTitle = when (settings.anotherAndroidConnectionType) {
+                "bluetooth" -> "無線 Bluetooth"
+                "wireless" -> "無線 Wi-Fi"
+                else -> "有線 USB通信"
+            }
+
             CollapsibleSettingCard(
-                title = "📱 別のAndroid連携設定 (${if (settings.anotherAndroidConnectionType == "wired") "有線 USB通信" else "無線 Wi-Fi"})",
+                title = "📱 別のAndroid連携設定 ($connTypeTitle)",
                 subtitle = if (settings.anotherAndroidRole == "sender") {
-                    "役割: 送信側 (太鼓) | 方式: ${if (settings.anotherAndroidConnectionType == "wired") "有線 (USB通信)" else "無線 (Wi-Fi)"} | 接続先: ${settings.anotherAndroidTargetIp}:${settings.anotherAndroidPort}"
+                    "役割: 送信側 (太鼓) | 方式: $connTypeTitle"
                 } else {
-                    "役割: 受信側 (ゲーム) | 方式: ${if (settings.anotherAndroidConnectionType == "wired") "有線 (USB通信)" else "無線 (Wi-Fi)"} | 待受ポート: ${settings.anotherAndroidPort}"
+                    "役割: 受信側 (ゲーム) | 方式: $connTypeTitle"
                 },
                 badgeText = if (settings.anotherAndroidRole == "sender") "送信側" else "受信側",
                 badgeColor = if (settings.anotherAndroidRole == "sender") Color(0xFFDBEAFE) else Color(0xFFDCFCE7),
                 badgeTextColor = if (settings.anotherAndroidRole == "sender") Color(0xFF1E40AF) else Color(0xFF166534),
                 isExpanded = expandAnotherAndroidCard,
                 onExpandedChange = { expandAnotherAndroidCard = it },
+                onHeaderClick = onAnotherAndroidTapped,
                 isDarkTheme = isDark
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -378,48 +436,108 @@ fun SettingsPanel(
                     }
 
                     Text(
-                        text = if (settings.anotherAndroidConnectionType == "wired") {
-                            "2台のAndroid端末をType-C - Type-C ケーブル（またはUSB OTGケーブル）で繋ぐだけ！USB AOAダイレクト通信により、ネットワーク遅延ゼロ・1ms未満の最高速入力レスポンスを実現します。"
-                        } else {
-                            "2台のAndroid端末を同じWi-Fi（またはネットワーク）に接続し、一方を「送信側（太鼓）」、もう一方を「受信側（ゲーム）」として通信させます。"
+                        text = when (settings.anotherAndroidConnectionType) {
+                            "bluetooth" -> "📶 Bluetoothで2台のAndroidを直接ワイヤレス接続します。外部Wi-Fiルーターやテザリング、IPアドレスの入力は不要！端末同士をペアリングするだけで接続できます。"
+                            "wired" -> "2台のAndroid端末をType-C - Type-C ケーブル（またはUSB OTGケーブル）で繋ぐだけ！USB AOAダイレクト通信により、ネットワーク遅延ゼロ・1ms未満の最高速入力レスポンスを実現します。"
+                            else -> "2台のAndroid端末を同じWi-Fi（またはネットワーク）に接続し、一方を「送信側（太鼓）」、もう一方を「受信側（ゲーム）」として通信させます。"
                         },
                         fontSize = 10.sp,
                         color = if (isDark) Color.White else Color.DarkGray
                     )
 
-                    // Connection Type Selector
-                    Text(
-                        text = "接続方式を選択:",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF78350F).invertIfDark(isDark)
-                    )
+                    // Wireless Warning Banner (Only shown when wireless options are unlocked and wireless/bluetooth is selected)
+                    if (settings.showWirelessOptions && (settings.anotherAndroidConnectionType == "wireless" || settings.anotherAndroidConnectionType == "bluetooth")) {
+                        Surface(
+                            color = if (isDark) Color(0xFF451A03) else Color(0xFFFFFBEB),
+                            border = BorderStroke(1.dp, if (isDark) Color(0xFFB45309) else Color(0xFFF59E0B)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(text = "⚠️", fontSize = 15.sp)
+                                    Text(
+                                        text = "無線通信（${if (settings.anotherAndroidConnectionType == "bluetooth") "Bluetooth" else "Wi-Fi"}）使用時の注意",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isDark) Color(0xFFFDE68A) else Color(0xFFB45309)
+                                    )
+                                }
+                                Text(
+                                    text = "スマートフォンの無線通信は、Android OSの省電力制御（Sniff Mode/スリープ）、パケットバッファリング、電波干渉等の影響を受けるため、入力の遅延（レイテンシ）や打鍵の欠落（抜け）が発生しやすくなります。\n\n高精度な判定や高速連打の安定性を求める場合は、Type-Cケーブル直結の「🔌 USB有線」接続を推奨します。",
+                                    fontSize = 10.5.sp,
+                                    lineHeight = 14.sp,
+                                    color = if (isDark) Color(0xFFFEF3C7) else Color(0xFF78350F)
+                                )
+                            }
+                        }
+                    }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        val connTypes = listOf(
-                            "wired" to "有線 (USB通信)",
-                            "wireless" to "無線 (Wi-Fi)"
+                    // Connection Type Selector (Hidden mode: only visible when showWirelessOptions is true)
+                    if (settings.showWirelessOptions) {
+                        Text(
+                            text = "接続方式を選択:",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF78350F).invertIfDark(isDark)
                         )
-                        connTypes.forEach { (typeVal, label) ->
-                            val isSelected = settings.anotherAndroidConnectionType == typeVal
-                            Button(
-                                onClick = {
-                                    onSettingsChanged(settings.copy(anotherAndroidConnectionType = typeVal))
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (isSelected) Color(0xFF78350F).invertIfDark(isDark) else Color(0xFFEADCC9).invertIfDark(isDark),
-                                    contentColor = if (isSelected) Color.White else Color(0xFF78350F).invertIfDark(isDark)
-                                ),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.weight(1f)
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            // Button layout order: USB有線, Wi-Fi, Bluetooth
+                            val connTypes = listOf(
+                                "wired" to "🔌 USB有線",
+                                "wireless" to "🌐 Wi-Fi",
+                                "bluetooth" to "📶 Bluetooth"
+                            )
+                            connTypes.forEach { (typeVal, label) ->
+                                val isSelected = settings.anotherAndroidConnectionType == typeVal
+                                Button(
+                                    onClick = {
+                                        onSettingsChanged(settings.copy(anotherAndroidConnectionType = typeVal))
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (isSelected) Color(0xFF78350F).invertIfDark(isDark) else Color(0xFFEADCC9).invertIfDark(isDark),
+                                        contentColor = if (isSelected) Color.White else Color(0xFF78350F).invertIfDark(isDark)
+                                    ),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        // When wireless options are hidden, show USB wired indicator
+                        Surface(
+                            color = Color(0xFFFEF3C7).invertIfDark(isDark),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onAnotherAndroidTapped() }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = label,
+                                    text = "🔌 接続方式: USB有線 (Type-C直結)",
                                     fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF92400E).invertIfDark(isDark)
                                 )
                             }
                         }
@@ -467,14 +585,202 @@ fun SettingsPanel(
 
                     if (settings.anotherAndroidRole == "sender") {
                         // SENDER
+                        val headerText = when (settings.anotherAndroidConnectionType) {
+                            "bluetooth" -> "【送信側の設定 (Bluetooth直接接続)】"
+                            "wired" -> "【送信側の設定 (有線 USB通信)】"
+                            else -> "【送信側の設定 (無線 Wi-Fi)】"
+                        }
                         Text(
-                            text = if (settings.anotherAndroidConnectionType == "wired") "【送信側の設定 (有線 USB通信)】" else "【送信側の設定 (無線 Wi-Fi)】",
+                            text = headerText,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF78350F).invertIfDark(isDark)
                         )
 
-                        if (settings.anotherAndroidConnectionType == "wireless") {
+                        if (settings.anotherAndroidConnectionType == "bluetooth") {
+                            // BLUETOOTH SENDER
+                            val isConnected = bluetoothSenderStatus == "connected"
+                            val isConnecting = bluetoothSenderStatus == "connecting"
+                            val isError = bluetoothSenderStatus == "error"
+
+                            val statusBg = when {
+                                isConnected -> if (isDark) Color(0xFF064E3B) else Color(0xFFD1FAE5)
+                                isConnecting -> if (isDark) Color(0xFF78350F) else Color(0xFFFEF3C7)
+                                isError -> if (isDark) Color(0xFF7F1D1D) else Color(0xFFFEE2E2)
+                                else -> if (isDark) Color(0xFF374151) else Color(0xFFF3F4F6)
+                            }
+                            val statusTextColor = when {
+                                isConnected -> if (isDark) Color(0xFFA7F3D0) else Color(0xFF065F46)
+                                isConnecting -> if (isDark) Color(0xFFFDE68A) else Color(0xFF92400E)
+                                isError -> if (isDark) Color(0xFFFECACA) else Color(0xFF991B1B)
+                                else -> if (isDark) Color(0xFFD1D5DB) else Color(0xFF374151)
+                            }
+                            val statusText = when {
+                                isConnected -> "🟢 Bluetooth接続中: ${bluetoothConnectedDeviceName ?: settings.anotherAndroidBluetoothDeviceName.ifEmpty { "ゲーム端末" }}"
+                                isConnecting -> "🟡 ゲーム端末にBluetooth接続中..."
+                                isError -> "🔴 Bluetooth接続エラー (相手端末でアプリが起動しているか確認してください)"
+                                else -> "⚪ Bluetooth未接続 (下の端末一覧からゲーム端末をタップして接続)"
+                            }
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(statusBg)
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = statusText,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = statusTextColor,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (isConnected) {
+                                    TextButton(
+                                        onClick = onDisconnectBluetooth,
+                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                        modifier = Modifier.height(24.dp)
+                                    ) {
+                                        Text("切断", fontSize = 10.sp, color = Color(0xFFEF4444))
+                                    }
+                                }
+                            }
+
+                            // Paired Devices List Card
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF1E293B) else Color(0xFFF8FAFC)),
+                                border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1)),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "📱 ペアリング済み端末一覧 (タップして接続)",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isDark) Color(0xFF93C5FD) else Color(0xFF1E40AF)
+                                        )
+                                        TextButton(
+                                            onClick = onRefreshBluetoothDevices,
+                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                            modifier = Modifier.height(24.dp)
+                                        ) {
+                                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(12.dp), tint = if (isDark) Color(0xFF93C5FD) else Color(0xFF1E40AF))
+                                            Spacer(modifier = Modifier.width(2.dp))
+                                            Text("更新", fontSize = 10.sp, color = if (isDark) Color(0xFF93C5FD) else Color(0xFF1E40AF))
+                                        }
+                                    }
+
+                                    if (bluetoothPairedDevices.isEmpty()) {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Text(
+                                                text = "ペアリング済みのBluetooth端末が見つかりません。\n下のボタンからゲーム端末とBluetoothペアリングしてください。",
+                                                fontSize = 10.sp,
+                                                textAlign = TextAlign.Center,
+                                                color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+                                            )
+                                        }
+                                    } else {
+                                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            bluetoothPairedDevices.forEach { dev ->
+                                                val isThisConnected = isConnected && (settings.anotherAndroidBluetoothDeviceAddress == dev.address || bluetoothConnectedDeviceName == dev.name)
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clip(RoundedCornerShape(8.dp))
+                                                        .background(if (isThisConnected) (if (isDark) Color(0xFF064E3B) else Color(0xFFDCFCE7)) else (if (isDark) Color(0xFF334155) else Color(0xFFF1F5F9)))
+                                                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(
+                                                            text = dev.name,
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = if (isDark) Color.White else Color(0xFF0F172A)
+                                                        )
+                                                        Text(
+                                                            text = dev.address,
+                                                            fontSize = 9.sp,
+                                                            color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+                                                        )
+                                                    }
+
+                                                    Button(
+                                                        onClick = {
+                                                            onConnectBluetoothDevice(dev.address, dev.name)
+                                                        },
+                                                        colors = ButtonDefaults.buttonColors(
+                                                            containerColor = if (isThisConnected) Color(0xFF16A34A) else (if (isDark) Color(0xFF2563EB) else Color(0xFF3B82F6))
+                                                        ),
+                                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                        modifier = Modifier.height(30.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = if (isThisConnected) "🟢 接続中" else "接続",
+                                                            fontSize = 10.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color.White
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Button(
+                                onClick = onOpenBluetoothSettings,
+                                colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0xFF0284C7) else Color(0xFF0284C7)),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("📱 AndroidのBluetooth設定を開く (新規ペアリング)", fontSize = 11.sp, color = Color.White)
+                            }
+
+                            // Bluetooth Instructions Tip Card
+                            Card(
+                                shape = RoundedCornerShape(8.dp),
+                                colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF1E293B) else Color(0xFFF0FDF4)),
+                                border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFF86EFAC)),
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Text(
+                                        text = "💡 Bluetooth接続の簡単3ステップ",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isDark) Color(0xFF4ADE80) else Color(0xFF166534)
+                                    )
+                                    Text(
+                                        text = "① 受信側（ゲーム端末）とこの端末（太鼓端末）の両方でBluetoothをONにしてペアリングします。\n" +
+                                               "② ゲーム端末でこのアプリを起動し、「受信側 (ゲーム)」にして待機します。\n" +
+                                               "③ 上の一覧に表示されたゲーム端末の名前をタップするだけで即接続完了！\n" +
+                                               "※Wi-Fiルーターやテザリング、IPアドレス指定が一切不要で、最速・超低遅延で快適に遊べます！",
+                                        fontSize = 9.5.sp,
+                                        color = if (isDark) Color(0xFFCBD5E1) else Color(0xFF14532D),
+                                        lineHeight = 13.sp
+                                    )
+                                }
+                            }
+
+                        } else if (settings.anotherAndroidConnectionType == "wireless") {
                             Text(
                                 text = "「自動検出」を押すか、受信側（ゲーム）画面に表示されているIPアドレスを入力して接続してください。",
                                 fontSize = 10.sp,
@@ -490,13 +796,16 @@ fun SettingsPanel(
                                     onClick = {
                                         isScanningByAutoDiscovery = true
                                         autoDiscoveryMessage = "🔍 ゲーム側 (受信機) を自動検出中..."
-                                        val portInt = settings.anotherAndroidPort.toIntOrNull() ?: 60001
+                                        val portInt = settings.anotherAndroidPort.toIntOrNull() ?: 60002
                                         TaikoAndroidRemoteSender.scanAndFindReceiverIp(
                                             targetPort = portInt,
+                                            udpDiscoveryPort = portInt + 200,
                                             connectionType = settings.anotherAndroidConnectionType,
                                             onFound = { foundIp ->
                                                 isScanningByAutoDiscovery = false
-                                                autoDiscoveryMessage = "✅ 発見しました: $foundIp"
+                                                val isDirectHotspot = foundIp == "192.168.43.1" || foundIp == "192.168.49.1" || foundIp.startsWith("192.168.42.")
+                                                val typeLabel = if (isDirectHotspot) " (🔥 テザリング直接接続)" else " (🌐 Wi-Fi経由)"
+                                                autoDiscoveryMessage = "✅ 発見しました: $foundIp$typeLabel"
                                                 onSettingsChanged(settings.copy(anotherAndroidTargetIp = foundIp))
                                                 onConnectRemoteSender()
                                             },
@@ -549,7 +858,7 @@ fun SettingsPanel(
                                     value = settings.anotherAndroidTargetIp,
                                     onValueChange = { onSettingsChanged(settings.copy(anotherAndroidTargetIp = it)) },
                                     label = { Text("受信側 (ゲーム) AndroidのIPアドレス") },
-                                    placeholder = { Text("192.168.1.100 または 127.0.0.1") },
+                                    placeholder = { Text("192.168.43.1 または 192.168.1.100") },
                                     singleLine = true,
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = customTextFieldColors(isDark)
@@ -622,16 +931,18 @@ fun SettingsPanel(
                                 border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFFFCD34D)),
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
                             ) {
-                                Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Text(
-                                        text = "🚀 無線 (Wi-Fi) の遅延・抜けを最小化するコツ",
+                                        text = "🚀 Wi-Fiテザリング直接接続の手順",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = if (isDark) Color(0xFFFDE047) else Color(0xFFB45309)
                                     )
                                     Text(
-                                        text = "① 受信側 (ゲーム側) または送信側で「Wi-Fiテザリング（アクセスポイント）」をONにして2台を直接接続すると、外部ルーターを経由せず極小遅延でプレイできます\n" +
-                                               "② 家庭内Wi-Fi利用時は、ルーターの近くで接続してください",
+                                        text = "① 受信側（ゲーム端末）で「Wi-Fiテザリング（アクセスポイント）」をONにします。\n" +
+                                               "② 送信側（太鼓端末）のWi-Fi設定を開き、受信側のWi-Fiスポットに接続します。\n" +
+                                               "③ この画面で「🔍 受信機 (ゲーム) を自動検出して接続」を押します。（または手動で 192.168.43.1 を入力）\n" +
+                                               "※ルーターを介さず端末同士が直接通信するため、安定してプレイできます。",
                                         fontSize = 9.5.sp,
                                         color = if (isDark) Color(0xFFCBD5E1) else Color(0xFF78350F),
                                         lineHeight = 13.sp
@@ -645,7 +956,7 @@ fun SettingsPanel(
 
                             val statusBg = if (isConnected) (if (isDark) Color(0xFF064E3B) else Color(0xFFD1FAE5)) else (if (isDark) Color(0xFF374151) else Color(0xFFF3F4F6))
                             val statusTextColor = if (isConnected) (if (isDark) Color(0xFFA7F3D0) else Color(0xFF065F46)) else (if (isDark) Color(0xFFD1D5DB) else Color(0xFF374151))
-                            val statusText = if (isConnected) "⚡ USB 有線超低遅延通信: 接続完了 (<1ms)" else "🔌 USB ケーブル接続を待機中..."
+                            val statusText = if (isConnected) "⚡ USB 有線通信: 接続完了" else "🔌 USB ケーブル接続を待機中..."
 
                             Box(
                                 modifier = Modifier
@@ -682,16 +993,109 @@ fun SettingsPanel(
 
                     } else {
                         // RECEIVER
+                        val headerText = when (settings.anotherAndroidConnectionType) {
+                            "bluetooth" -> "【受信側 (ゲーム) の設定 (Bluetooth直接接続)】"
+                            "wired" -> "【受信側 (ゲーム) の設定 (有線 USB通信)】"
+                            else -> "【受信側 (ゲーム) の設定 (無線 Wi-Fi)】"
+                        }
                         Text(
-                            text = if (settings.anotherAndroidConnectionType == "wired") "【受信側 (ゲーム) の設定 (有線 USB通信)】" else "【受信側 (ゲーム) の設定 (無線 Wi-Fi)】",
+                            text = headerText,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF78350F).invertIfDark(isDark)
                         )
 
-                        if (settings.anotherAndroidConnectionType == "wireless") {
+                        if (settings.anotherAndroidConnectionType == "bluetooth") {
+                            // BLUETOOTH RECEIVER
+                            val context = LocalContext.current
+                            val localBtName = remember { TaikoBluetoothManager.getLocalDeviceName(context) }
+                            val isConnected = bluetoothReceiverConnectedDevice != null
+
+                            val statusBg = if (isConnected) (if (isDark) Color(0xFF064E3B) else Color(0xFFD1FAE5)) else (if (isDark) Color(0xFF374151) else Color(0xFFF3F4F6))
+                            val statusTextColor = if (isConnected) (if (isDark) Color(0xFFA7F3D0) else Color(0xFF065F46)) else (if (isDark) Color(0xFFD1D5DB) else Color(0xFF374151))
+                            val statusText = if (isConnected) "🟢 太鼓側端末「${bluetoothReceiverConnectedDevice}」が接続中 (入力受信待機中)" else "🟡 太鼓側 (送信側) からのBluetooth接続を待機中..."
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(statusBg)
+                                    .padding(10.dp)
+                            ) {
+                                Text(
+                                    text = statusText,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = statusTextColor
+                                )
+                            }
+
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF1E293B) else Color(0xFFEFF6FF)),
+                                border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFF93C5FD)),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(
+                                        text = "この端末のBluetooth名",
+                                        fontSize = 10.sp,
+                                        color = if (isDark) Color(0xFF93C5FD) else Color(0xFF1D4ED8)
+                                    )
+                                    Text(
+                                        text = localBtName,
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isDark) Color.White else Color(0xFF1E3A8A)
+                                    )
+                                    Text(
+                                        text = "太鼓側端末（送信機）の画面で、この名前「$localBtName」をタップして接続してください。",
+                                        fontSize = 9.5.sp,
+                                        color = if (isDark) Color(0xFFCBD5E1) else Color(0xFF3B82F6)
+                                    )
+                                }
+                            }
+
+                            Button(
+                                onClick = onOpenBluetoothSettings,
+                                colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0xFF0284C7) else Color(0xFF0284C7)),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("📱 AndroidのBluetooth設定を開く (ペアリング用)", fontSize = 11.sp, color = Color.White)
+                            }
+
+                            // Receiver Guide Card
+                            Card(
+                                shape = RoundedCornerShape(8.dp),
+                                colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF1E293B) else Color(0xFFF0FDF4)),
+                                border = BorderStroke(1.dp, if (isDark) Color(0xFF334155) else Color(0xFF86EFAC)),
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Text(
+                                        text = "💡 受信側 (ゲーム端末) の準備手順",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isDark) Color(0xFF4ADE80) else Color(0xFF166534)
+                                    )
+                                    Text(
+                                        text = "① AndroidのBluetoothがONになっていることを確認します。\n" +
+                                               "② 太鼓側端末と一度ペアリングします（設定ボタンから可能）。\n" +
+                                               "③ このアプリでShizukuを起動した状態で太鼓側から接続すれば、受信した打鍵がゲームに即座に入力されます！",
+                                        fontSize = 9.5.sp,
+                                        color = if (isDark) Color(0xFFCBD5E1) else Color(0xFF14532D),
+                                        lineHeight = 13.sp
+                                    )
+                                }
+                            }
+
+                        } else if (settings.anotherAndroidConnectionType == "wireless") {
                             val clipboardManager = LocalClipboardManager.current
-                            val localIp = remember { NetworkUtils.getLocalIpAddress() }
+                            val detailedIps = remember { NetworkUtils.getDetailedLocalIpAddresses() }
+                            val primaryIp = detailedIps.firstOrNull()?.ip ?: NetworkUtils.getLocalIpAddress()
 
                             Text(
                                 text = "この端末のIPアドレスを太鼓側 (送信側) に入力するか、太鼓側で「自動検出」を実行してください。",
@@ -705,41 +1109,78 @@ fun SettingsPanel(
                                 shape = RoundedCornerShape(10.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column {
-                                        Text(
-                                            text = "この端末のIPアドレス",
-                                            fontSize = 10.sp,
-                                            color = if (isDark) Color(0xFF7DD3FC) else Color(0xFFC2410C)
-                                        )
-                                        Text(
-                                            text = localIp,
-                                            fontSize = 16.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (isDark) Color.White else Color(0xFF7C2D12)
-                                        )
-                                        Text(
-                                            text = "待受ポート: ${settings.anotherAndroidPort}",
-                                            fontSize = 10.sp,
-                                            color = if (isDark) Color(0xFFBAE6FD) else Color(0xFFEA580C)
-                                        )
+                                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text(
+                                                text = "この端末のIPアドレス (接続先)",
+                                                fontSize = 10.sp,
+                                                color = if (isDark) Color(0xFF7DD3FC) else Color(0xFFC2410C)
+                                            )
+                                            Text(
+                                                text = primaryIp,
+                                                fontSize = 16.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isDark) Color.White else Color(0xFF7C2D12)
+                                            )
+                                            Text(
+                                                text = "待受ポート: ${settings.anotherAndroidPort}",
+                                                fontSize = 10.sp,
+                                                color = if (isDark) Color(0xFFBAE6FD) else Color(0xFFEA580C)
+                                            )
+                                        }
+
+                                        Button(
+                                            onClick = {
+                                                clipboardManager.setText(AnnotatedString(primaryIp))
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0xFF0284C7) else Color(0xFFEA580C))
+                                        ) {
+                                            Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("IPコピー", fontSize = 10.sp, color = Color.White)
+                                        }
                                     }
 
-                                    Button(
-                                        onClick = {
-                                            clipboardManager.setText(AnnotatedString(localIp))
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0xFF0284C7) else Color(0xFFEA580C))
-                                    ) {
-                                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("IPコピー", fontSize = 10.sp, color = Color.White)
+                                    if (detailedIps.size > 1) {
+                                        Divider(color = if (isDark) Color(0xFF0369A1) else Color(0xFFFFCC80), thickness = 1.dp)
+                                        Text(
+                                            text = "検出されたすべてのネットワーク:",
+                                            fontSize = 9.5.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = if (isDark) Color(0xFF7DD3FC) else Color(0xFFC2410C)
+                                        )
+                                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            detailedIps.forEach { netIp ->
+                                                val isTether = netIp.ip == "192.168.43.1" || netIp.ip == "192.168.49.1" || netIp.isHotspot
+                                                val badge = if (isTether) "🔥 [テザリング直接]" else "🌐"
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        text = "$badge ${netIp.displayName}: ${netIp.ip}",
+                                                        fontSize = 10.sp,
+                                                        fontWeight = if (isTether) FontWeight.Bold else FontWeight.Normal,
+                                                        color = if (isTether) (if (isDark) Color(0xFF38BDF8) else Color(0xFFC2410C)) else (if (isDark) Color.White else Color(0xFF431407))
+                                                    )
+                                                    TextButton(
+                                                        onClick = {
+                                                            clipboardManager.setText(AnnotatedString(netIp.ip))
+                                                        },
+                                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                                        modifier = Modifier.height(24.dp)
+                                                    ) {
+                                                        Text("コピー", fontSize = 9.5.sp, color = if (isDark) Color(0xFF38BDF8) else Color(0xFFEA580C))
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -1561,8 +2002,14 @@ if __name__ == "__main__":
                     )
                 }
 
-                // Big Note DS Detection Area Adjustment (面とフチそれぞれの広さ設定)
+                // Big Note DS Detection Area Adjustment (面とフチそれぞれの広さ設定: 縦横別)
                 if (settings.singleHandBigNotes) {
+                    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+                    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+                    val orientationLabel = if (isLandscape) "横画面" else "縦画面"
+                    val currentDonBig = if (isLandscape) settings.landscapeDonBigNotePercent else settings.portraitDonBigNotePercent
+                    var donBigText by remember(currentDonBig) { mutableStateOf(currentDonBig.toString()) }
+
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1570,17 +2017,32 @@ if __name__ == "__main__":
                             .padding(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Text(
-                            text = "🎯 大音符DS 判定の広さ設定",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF78350F).invertIfDark(isDark)
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "🎯 大音符DS 判定の広さ設定",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF78350F).invertIfDark(isDark)
+                            )
+                            Surface(
+                                color = if (isDark) Color(0xFF78350F) else Color(0xFFFED7AA),
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = orientationLabel,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isDark) Color(0xFFFDE68A) else Color(0xFF78350F),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
 
                         // 1. 面 (ドン) の大音符判定の広さ
-                        val currentDonBig = settings.donBigNotePercent
-                        var donBigText by remember(currentDonBig) { mutableStateOf(currentDonBig.toString()) }
-
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -1594,7 +2056,13 @@ if __name__ == "__main__":
                                     color = Color(0xFF78350F).invertIfDark(isDark)
                                 )
                                 OutlinedButton(
-                                    onClick = { onSettingsChanged(settings.copy(donBigNotePercent = 40)) },
+                                    onClick = {
+                                        if (isLandscape) {
+                                            onSettingsChanged(settings.copy(landscapeDonBigNotePercent = 40, donBigNotePercent = 40))
+                                        } else {
+                                            onSettingsChanged(settings.copy(portraitDonBigNotePercent = 40, donBigNotePercent = 40))
+                                        }
+                                    },
                                     border = BorderStroke(1.dp, Color(0xFF78350F).copy(alpha = 0.3f).invertIfDark(isDark)),
                                     shape = RoundedCornerShape(6.dp),
                                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
@@ -1616,7 +2084,11 @@ if __name__ == "__main__":
                                     Button(
                                         onClick = {
                                             val newVal = (currentDonBig - 5).coerceIn(10, 300)
-                                            onSettingsChanged(settings.copy(donBigNotePercent = newVal))
+                                            if (isLandscape) {
+                                                onSettingsChanged(settings.copy(landscapeDonBigNotePercent = newVal, donBigNotePercent = newVal))
+                                            } else {
+                                                onSettingsChanged(settings.copy(portraitDonBigNotePercent = newVal, donBigNotePercent = newVal))
+                                            }
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEADCC9).invertIfDark(isDark)),
                                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
@@ -1628,7 +2100,11 @@ if __name__ == "__main__":
                                     Button(
                                         onClick = {
                                             val newVal = (currentDonBig + 5).coerceIn(10, 300)
-                                            onSettingsChanged(settings.copy(donBigNotePercent = newVal))
+                                            if (isLandscape) {
+                                                onSettingsChanged(settings.copy(landscapeDonBigNotePercent = newVal, donBigNotePercent = newVal))
+                                            } else {
+                                                onSettingsChanged(settings.copy(portraitDonBigNotePercent = newVal, donBigNotePercent = newVal))
+                                            }
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEADCC9).invertIfDark(isDark)),
                                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
@@ -1650,7 +2126,11 @@ if __name__ == "__main__":
                                             val parsed = newValue.toIntOrNull()
                                             if (parsed != null) {
                                                 val clamped = parsed.coerceIn(10, 300)
-                                                onSettingsChanged(settings.copy(donBigNotePercent = clamped))
+                                                if (isLandscape) {
+                                                    onSettingsChanged(settings.copy(landscapeDonBigNotePercent = clamped, donBigNotePercent = clamped))
+                                                } else {
+                                                    onSettingsChanged(settings.copy(portraitDonBigNotePercent = clamped, donBigNotePercent = clamped))
+                                                }
                                             }
                                         },
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -1667,7 +2147,7 @@ if __name__ == "__main__":
                         Divider(color = Color(0xFF78350F).copy(alpha = 0.1f).invertIfDark(isDark))
 
                         // 2. フチ (カッ) の大音符判定の広さ
-                        val currentKatBig = settings.katBigNotePercent
+                        val currentKatBig = if (isLandscape) settings.landscapeKatBigNotePercent else settings.portraitKatBigNotePercent
                         var katBigText by remember(currentKatBig) { mutableStateOf(currentKatBig.toString()) }
 
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1683,7 +2163,13 @@ if __name__ == "__main__":
                                     color = Color(0xFF78350F).invertIfDark(isDark)
                                 )
                                 OutlinedButton(
-                                    onClick = { onSettingsChanged(settings.copy(katBigNotePercent = 100)) },
+                                    onClick = {
+                                        if (isLandscape) {
+                                            onSettingsChanged(settings.copy(landscapeKatBigNotePercent = 100, katBigNotePercent = 100))
+                                        } else {
+                                            onSettingsChanged(settings.copy(portraitKatBigNotePercent = 100, katBigNotePercent = 100))
+                                        }
+                                    },
                                     border = BorderStroke(1.dp, Color(0xFF78350F).copy(alpha = 0.3f).invertIfDark(isDark)),
                                     shape = RoundedCornerShape(6.dp),
                                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
@@ -1705,7 +2191,11 @@ if __name__ == "__main__":
                                     Button(
                                         onClick = {
                                             val newVal = (currentKatBig - 5).coerceIn(10, 300)
-                                            onSettingsChanged(settings.copy(katBigNotePercent = newVal))
+                                            if (isLandscape) {
+                                                onSettingsChanged(settings.copy(landscapeKatBigNotePercent = newVal, katBigNotePercent = newVal))
+                                            } else {
+                                                onSettingsChanged(settings.copy(portraitKatBigNotePercent = newVal, katBigNotePercent = newVal))
+                                            }
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEADCC9).invertIfDark(isDark)),
                                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
@@ -1717,7 +2207,11 @@ if __name__ == "__main__":
                                     Button(
                                         onClick = {
                                             val newVal = (currentKatBig + 5).coerceIn(10, 300)
-                                            onSettingsChanged(settings.copy(katBigNotePercent = newVal))
+                                            if (isLandscape) {
+                                                onSettingsChanged(settings.copy(landscapeKatBigNotePercent = newVal, katBigNotePercent = newVal))
+                                            } else {
+                                                onSettingsChanged(settings.copy(portraitKatBigNotePercent = newVal, katBigNotePercent = newVal))
+                                            }
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEADCC9).invertIfDark(isDark)),
                                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
@@ -1739,7 +2233,11 @@ if __name__ == "__main__":
                                             val parsed = newValue.toIntOrNull()
                                             if (parsed != null) {
                                                 val clamped = parsed.coerceIn(10, 300)
-                                                onSettingsChanged(settings.copy(katBigNotePercent = clamped))
+                                                if (isLandscape) {
+                                                    onSettingsChanged(settings.copy(landscapeKatBigNotePercent = clamped, katBigNotePercent = clamped))
+                                                } else {
+                                                    onSettingsChanged(settings.copy(portraitKatBigNotePercent = clamped, katBigNotePercent = clamped))
+                                                }
                                             }
                                         },
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -2253,6 +2751,7 @@ fun CollapsibleSettingCard(
     badgeTextColor: Color = Color(0xFF78350F),
     isDarkTheme: Boolean = false,
     headerTrailingContent: (@Composable () -> Unit)? = null,
+    onHeaderClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
@@ -2265,7 +2764,10 @@ fun CollapsibleSettingCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onExpandedChange(!isExpanded) }
+                    .clickable {
+                        onHeaderClick?.invoke()
+                        onExpandedChange(!isExpanded)
+                    }
                     .padding(horizontal = 14.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
@@ -2444,7 +2946,7 @@ fun TaikoSizeSettingCard(
                     ) {
                         Button(
                             onClick = {
-                                val newSize = (currentSize - 5).coerceIn(20, 200)
+                                val newSize = (currentSize - 5).coerceIn(10, 300)
                                 if (isLandscape) {
                                     onSettingsChanged(settings.copy(landscapeSizePercent = newSize))
                                 } else {
@@ -2460,7 +2962,7 @@ fun TaikoSizeSettingCard(
 
                         Button(
                             onClick = {
-                                val newSize = (currentSize + 5).coerceIn(20, 200)
+                                val newSize = (currentSize + 5).coerceIn(10, 300)
                                 if (isLandscape) {
                                     onSettingsChanged(settings.copy(landscapeSizePercent = newSize))
                                 } else {
@@ -2486,7 +2988,7 @@ fun TaikoSizeSettingCard(
                                 sizeText = newValue
                                 val parsed = newValue.toIntOrNull()
                                 if (parsed != null) {
-                                    val clamped = parsed.coerceIn(20, 200)
+                                    val clamped = parsed.coerceIn(10, 300)
                                     if (isLandscape) {
                                         onSettingsChanged(settings.copy(landscapeSizePercent = clamped))
                                     } else {
@@ -2513,7 +3015,7 @@ fun TaikoSizeSettingCard(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
-                    text = "上下位置: ${currentPos}% (0%=上, 50%=中央, 100%=下)",
+                    text = "上下位置: ${currentPos}% (0%=上端, 50%=中央, 100%=下端 / -50%〜150%)",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF78350F).invertIfDark(isDark)
@@ -2529,7 +3031,7 @@ fun TaikoSizeSettingCard(
                     ) {
                         Button(
                             onClick = {
-                                val newPos = (currentPos - 5).coerceIn(0, 100)
+                                val newPos = (currentPos - 5).coerceIn(-50, 150)
                                 if (isLandscape) {
                                     onSettingsChanged(settings.copy(landscapeVerticalPosPercent = newPos))
                                 } else {
@@ -2545,7 +3047,7 @@ fun TaikoSizeSettingCard(
 
                         Button(
                             onClick = {
-                                val newPos = (currentPos + 5).coerceIn(0, 100)
+                                val newPos = (currentPos + 5).coerceIn(-50, 150)
                                 if (isLandscape) {
                                     onSettingsChanged(settings.copy(landscapeVerticalPosPercent = newPos))
                                 } else {
@@ -2571,7 +3073,7 @@ fun TaikoSizeSettingCard(
                                 posText = newValue
                                 val parsed = newValue.toIntOrNull()
                                 if (parsed != null) {
-                                    val clamped = parsed.coerceIn(0, 100)
+                                    val clamped = parsed.coerceIn(-50, 150)
                                     if (isLandscape) {
                                         onSettingsChanged(settings.copy(landscapeVerticalPosPercent = clamped))
                                     } else {
@@ -2744,6 +3246,8 @@ fun TaikoPresetSettingCard(
                                     onSettingsChanged(settings.copy(
                                         landscapeSizePercent = preset1.sizePercent,
                                         landscapeVerticalPosPercent = preset1.verticalPositionPercent,
+                                        landscapeDonBigNotePercent = preset1.donBigPercent,
+                                        landscapeKatBigNotePercent = preset1.katBigPercent,
                                         donBigNotePercent = preset1.donBigPercent,
                                         katBigNotePercent = preset1.katBigPercent
                                     ))
@@ -2751,6 +3255,8 @@ fun TaikoPresetSettingCard(
                                     onSettingsChanged(settings.copy(
                                         portraitSizePercent = preset1.sizePercent,
                                         portraitVerticalPosPercent = preset1.verticalPositionPercent,
+                                        portraitDonBigNotePercent = preset1.donBigPercent,
+                                        portraitKatBigNotePercent = preset1.katBigPercent,
                                         donBigNotePercent = preset1.donBigPercent,
                                         katBigNotePercent = preset1.katBigPercent
                                     ))
@@ -2769,8 +3275,8 @@ fun TaikoPresetSettingCard(
                                         landscapePreset1 = DrumPreset(
                                             sizePercent = settings.landscapeSizePercent,
                                             verticalPositionPercent = settings.landscapeVerticalPosPercent,
-                                            donBigPercent = settings.donBigNotePercent,
-                                            katBigPercent = settings.katBigNotePercent
+                                            donBigPercent = settings.landscapeDonBigNotePercent,
+                                            katBigPercent = settings.landscapeKatBigNotePercent
                                         )
                                     ))
                                 } else {
@@ -2778,8 +3284,8 @@ fun TaikoPresetSettingCard(
                                         portraitPreset1 = DrumPreset(
                                             sizePercent = settings.portraitSizePercent,
                                             verticalPositionPercent = settings.portraitVerticalPosPercent,
-                                            donBigPercent = settings.donBigNotePercent,
-                                            katBigPercent = settings.katBigNotePercent
+                                            donBigPercent = settings.portraitDonBigNotePercent,
+                                            katBigPercent = settings.portraitKatBigNotePercent
                                         )
                                     ))
                                 }
@@ -2830,6 +3336,8 @@ fun TaikoPresetSettingCard(
                                     onSettingsChanged(settings.copy(
                                         landscapeSizePercent = preset2.sizePercent,
                                         landscapeVerticalPosPercent = preset2.verticalPositionPercent,
+                                        landscapeDonBigNotePercent = preset2.donBigPercent,
+                                        landscapeKatBigNotePercent = preset2.katBigPercent,
                                         donBigNotePercent = preset2.donBigPercent,
                                         katBigNotePercent = preset2.katBigPercent
                                     ))
@@ -2837,6 +3345,8 @@ fun TaikoPresetSettingCard(
                                     onSettingsChanged(settings.copy(
                                         portraitSizePercent = preset2.sizePercent,
                                         portraitVerticalPosPercent = preset2.verticalPositionPercent,
+                                        portraitDonBigNotePercent = preset2.donBigPercent,
+                                        portraitKatBigNotePercent = preset2.katBigPercent,
                                         donBigNotePercent = preset2.donBigPercent,
                                         katBigNotePercent = preset2.katBigPercent
                                     ))
@@ -2855,8 +3365,8 @@ fun TaikoPresetSettingCard(
                                         landscapePreset2 = DrumPreset(
                                             sizePercent = settings.landscapeSizePercent,
                                             verticalPositionPercent = settings.landscapeVerticalPosPercent,
-                                            donBigPercent = settings.donBigNotePercent,
-                                            katBigPercent = settings.katBigNotePercent
+                                            donBigPercent = settings.landscapeDonBigNotePercent,
+                                            katBigPercent = settings.landscapeKatBigNotePercent
                                         )
                                     ))
                                 } else {
@@ -2864,8 +3374,8 @@ fun TaikoPresetSettingCard(
                                         portraitPreset2 = DrumPreset(
                                             sizePercent = settings.portraitSizePercent,
                                             verticalPositionPercent = settings.portraitVerticalPosPercent,
-                                            donBigPercent = settings.donBigNotePercent,
-                                            katBigPercent = settings.katBigNotePercent
+                                            donBigPercent = settings.portraitDonBigNotePercent,
+                                            katBigPercent = settings.portraitKatBigNotePercent
                                         )
                                     ))
                                 }
@@ -2903,7 +3413,7 @@ private fun ShizukuSettingsContent(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
-            text = "Shizuku（ADB権限実行環境）を使用して、端末ローカルでダイレクトにキーボード/ゲームパッド信号を注入します。Root化不要で超低遅延で動作します。",
+            text = "Shizuku（ADB権限実行環境）を使用して、端末ローカルでダイレクトにキーボード/ゲームパッド信号を注入します。Root化不要で動作します。",
             fontSize = 10.sp,
             color = if (isDark) Color.White else Color.DarkGray
         )

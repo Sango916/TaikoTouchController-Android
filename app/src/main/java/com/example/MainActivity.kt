@@ -1,5 +1,6 @@
 package com.example
 
+import android.Manifest
 import android.provider.Settings
 import android.content.Context
 import android.content.Intent
@@ -12,10 +13,14 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import android.view.KeyEvent
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import rikka.shizuku.Shizuku
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -68,11 +73,19 @@ class MainActivity : ComponentActivity() {
     private var tcpServer: TaikoTcpServer? = null
     private val tcpClientsCountState = mutableStateOf(0)
 
-    // Another Android Remote Connection
+    // Another Android Remote Connection (Wi-Fi & Wired)
     private var remoteSender: TaikoAndroidRemoteSender? = null
     private var remoteReceiver: TaikoAndroidRemoteReceiver? = null
     private val remoteSenderStatusState = mutableStateOf("disconnected")
     private val remoteReceiverClientsCountState = mutableStateOf(0)
+
+    // Bluetooth Remote Connection
+    private var bluetoothSender: TaikoBluetoothSender? = null
+    private var bluetoothReceiver: TaikoBluetoothReceiver? = null
+    private val bluetoothSenderStatusState = mutableStateOf("disconnected")
+    private val bluetoothConnectedDeviceNameState = mutableStateOf<String?>(null)
+    private val bluetoothReceiverConnectedDeviceState = mutableStateOf<String?>(null)
+    private val bluetoothPairedDevicesState = mutableStateOf<List<TaikoBluetoothManager.BluetoothDeviceInfo>>(emptyList())
 
     // Vibration hardware service
     private var vibrator: Vibrator? = null
@@ -122,6 +135,49 @@ class MainActivity : ComponentActivity() {
         runOnUiThread {
             shizukuInstalledAndRunning.value = false
             shizukuPermissionGranted.value = false
+        }
+    }
+
+    private val bluetoothPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val allGranted = permissions.entries.all { it.value }
+        if (allGranted) {
+            refreshBluetoothDevices()
+            val settings = settingsState.value
+            if (settings.connectionMode == "another_android" && settings.anotherAndroidConnectionType == "bluetooth") {
+                if (settings.anotherAndroidRole == "receiver") {
+                    startBluetoothReceiver()
+                } else if (settings.anotherAndroidBluetoothDeviceAddress.isNotEmpty()) {
+                    connectBluetoothSender(settings.anotherAndroidBluetoothDeviceAddress, settings.anotherAndroidBluetoothDeviceName)
+                }
+            }
+        } else {
+            Toast.makeText(this, "Bluetooth権限が必要です", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun checkAndRequestBluetoothPermissions(onGranted: () -> Unit) {
+        if (TaikoBluetoothManager.hasBluetoothPermissions(this)) {
+            onGranted()
+        } else {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                bluetoothPermissionLauncher.launch(
+                    arrayOf(
+                        Manifest.permission.BLUETOOTH_CONNECT,
+                        Manifest.permission.BLUETOOTH_SCAN,
+                        Manifest.permission.BLUETOOTH_ADVERTISE
+                    )
+                )
+            } else {
+                bluetoothPermissionLauncher.launch(
+                    arrayOf(
+                        Manifest.permission.BLUETOOTH,
+                        Manifest.permission.BLUETOOTH_ADMIN,
+                        Manifest.permission.ACCESS_FINE_LOCATION
+                    )
+                )
+            }
         }
     }
 
@@ -327,15 +383,20 @@ class MainActivity : ComponentActivity() {
             var activeTab by remember { mutableStateOf(1) } // 0 = Controller, 1 = Settings (default to Settings/Shizuku to help user find it easily on first open!)
             val isDarkTheme = resolveIsDarkTheme(settings.themeMode)
 
-            // 画面分割(Split Screen)時のフォーカス問題対策:
+            // 画面分割(Split Screen)時のフォーカス問題対策 & 全画面時のステータスバー格納:
             // 全画面コントローラーのときは FLAG_NOT_FOCUSABLE を設定し、タップしても上画面のエミュレーターからフォーカスを奪わないようにします。
-            // これにより、下画面をタップしながらでも上画面のエミュレーターに確実にキー入力が送信されます。
+            // また、ステータスバー・ナビゲーションバーを自動的に格納（Immersive Mode）して戻るボタンや画面端の操作を快適にします。
             LaunchedEffect(isFullScreen) {
+                resetAllInputs()
+                val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+                insetsController.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                 if (isFullScreen) {
                     window.addFlags(android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+                    insetsController.hide(WindowInsetsCompat.Type.systemBars())
                     Toast.makeText(context, "全画面モード: 終了ボタンを長押しで閉じます", Toast.LENGTH_SHORT).show()
                 } else {
                     window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+                    insetsController.show(WindowInsetsCompat.Type.systemBars())
                 }
             }
 
@@ -370,28 +431,34 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier.fillMaxSize()
                             )
 
-                            // Overlaid exit button with strict long-press detection (連打・ダブルタップでは絶対に閉じず右カッとなる)
+                            // Overlaid exit button with safe insets padding and clear visibility
                             Box(
                                 contentAlignment = Alignment.Center,
                                 modifier = Modifier
                                     .align(Alignment.TopEnd)
-                                    .padding(16.dp)
-                                    .size(44.dp)
+                                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.End))
+                                    .padding(top = 12.dp, end = 12.dp)
+                                    .size(48.dp)
                                     .clip(CircleShape)
-                                    .background(Color.Black.copy(alpha = 0.5f))
+                                    .background(Color.Black.copy(alpha = 0.55f))
                                     .pointerInput(Unit) {
                                         detectTapGestures(
                                             onPress = {
-                                                // Trigger right kat immediately on press
-                                                triggerInput("rightKat", true)
-                                                if (settings.soundEffects && audioPlayer != null) {
-                                                    audioPlayer?.playKat(settings.soundVolume)
+                                                try {
+                                                    // Trigger right kat immediately on press
+                                                    triggerInput("rightKat", true)
+                                                    if (settings.soundEffects && audioPlayer != null) {
+                                                        audioPlayer?.playKat(settings.soundVolume)
+                                                    }
+                                                    triggerVibration(false)
+                                                    tryAwaitRelease()
+                                                } finally {
+                                                    triggerInput("rightKat", false)
                                                 }
-                                                triggerVibration(false)
-                                                tryAwaitRelease()
-                                                triggerInput("rightKat", false)
                                             },
                                             onLongPress = {
+                                                triggerInput("rightKat", false)
+                                                resetAllInputs()
                                                 isFullScreen = false
                                             }
                                         )
@@ -401,7 +468,7 @@ class MainActivity : ComponentActivity() {
                                     imageVector = Icons.Default.FullscreenExit,
                                     contentDescription = "長押しで全画面を終了",
                                     tint = Color.White,
-                                    modifier = Modifier.size(24.dp)
+                                    modifier = Modifier.size(26.dp)
                                 )
                             }
                         }
@@ -531,6 +598,14 @@ class MainActivity : ComponentActivity() {
                                             remoteReceiverClientsCount = remoteReceiverClientsCountState.value,
                                             onConnectRemoteSender = { connectRemoteSender() },
                                             onResetConnection = { resetConnection() },
+                                            bluetoothSenderStatus = bluetoothSenderStatusState.value,
+                                            bluetoothConnectedDeviceName = bluetoothConnectedDeviceNameState.value,
+                                            bluetoothReceiverConnectedDevice = bluetoothReceiverConnectedDeviceState.value,
+                                            bluetoothPairedDevices = bluetoothPairedDevicesState.value,
+                                            onConnectBluetoothDevice = { addr, name -> connectBluetoothSender(addr, name) },
+                                            onDisconnectBluetooth = { disconnectBluetoothSender() },
+                                            onRefreshBluetoothDevices = { refreshBluetoothDevices() },
+                                            onOpenBluetoothSettings = { openBluetoothSettings() },
                                             modifier = Modifier.weight(1f)
                                         )
                                     }
@@ -589,6 +664,14 @@ class MainActivity : ComponentActivity() {
                                         remoteReceiverClientsCount = remoteReceiverClientsCountState.value,
                                         onConnectRemoteSender = { connectRemoteSender() },
                                         onResetConnection = { resetConnection() },
+                                        bluetoothSenderStatus = bluetoothSenderStatusState.value,
+                                        bluetoothConnectedDeviceName = bluetoothConnectedDeviceNameState.value,
+                                        bluetoothReceiverConnectedDevice = bluetoothReceiverConnectedDeviceState.value,
+                                        bluetoothPairedDevices = bluetoothPairedDevicesState.value,
+                                        onConnectBluetoothDevice = { addr, name -> connectBluetoothSender(addr, name) },
+                                        onDisconnectBluetooth = { disconnectBluetoothSender() },
+                                        onRefreshBluetoothDevices = { refreshBluetoothDevices() },
+                                        onOpenBluetoothSettings = { openBluetoothSettings() },
                                         modifier = Modifier.weight(1f)
                                     )
                                 }
@@ -740,7 +823,11 @@ class MainActivity : ComponentActivity() {
             "another_android" -> {
                 if (key.isNotEmpty()) {
                     if (settings.anotherAndroidRole == "sender") {
-                        remoteSender?.sendKeyEvent(part, isPressed)
+                        if (settings.anotherAndroidConnectionType == "bluetooth") {
+                            bluetoothSender?.sendKeyEvent(part, isPressed)
+                        } else {
+                            remoteSender?.sendKeyEvent(part, isPressed)
+                        }
                     } else {
                         // Receiver mode: Inject locally on this device via Shizuku
                         val emulationMode = settings.shizukuEmulationMode
@@ -757,8 +844,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun connectRemoteSender() {
+    private fun connectRemoteSender(overrideIp: String? = null) {
         val settings = settingsState.value
+        if (settings.anotherAndroidConnectionType == "bluetooth") {
+            connectBluetoothSender(overrideIp)
+            return
+        }
+
         val isWired = settings.anotherAndroidConnectionType == "wired"
         val port = settings.anotherAndroidPort.toIntOrNull() ?: 60002
 
@@ -779,7 +871,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            val ip = settings.anotherAndroidTargetIp.trim()
+            val ip = (overrideIp ?: settings.anotherAndroidTargetIp).trim()
             if (ip.isNotEmpty()) {
                 sender.connect(ip, port, object : TaikoAndroidRemoteSender.ConnectionListener {
                     override fun onConnected() {
@@ -851,10 +943,46 @@ class MainActivity : ComponentActivity() {
             }
         } else {
             // Wireless Wi-Fi Mode
-            val ip = settings.anotherAndroidTargetIp.trim()
+            val ip = (overrideIp ?: settings.anotherAndroidTargetIp).trim()
             if (ip.isEmpty()) {
-                remoteSenderStatusState.value = "error"
-                TaikoLogManager.log("無線 (Wi-Fi) モード: 受信側 (ゲーム) のIPアドレスを入力するか、「自動検出」ボタンを押してください。")
+                remoteSenderStatusState.value = "connecting"
+                TaikoLogManager.log("無線 (Wi-Fi) モード: 受信機 (ゲーム) を自動探索中...")
+                TaikoAndroidRemoteSender.scanAndFindReceiverIp(
+                    targetPort = port,
+                    connectionType = "wireless",
+                    onFound = { foundIp ->
+                        runOnUiThread {
+                            val currentSettings = settingsState.value
+                            updateAndPersistSettings(currentSettings.copy(anotherAndroidTargetIp = foundIp))
+                            sender.connect(foundIp, port, object : TaikoAndroidRemoteSender.ConnectionListener {
+                                override fun onConnected() {
+                                    runOnUiThread {
+                                        remoteSenderStatusState.value = "connected"
+                                        TaikoLogManager.log("Wi-Fi 無線通信: 受信側 ($foundIp:$port) に接続完了")
+                                    }
+                                }
+                                override fun onDisconnected() {
+                                    runOnUiThread {
+                                        remoteSenderStatusState.value = "disconnected"
+                                        TaikoLogManager.log("Wi-Fi 無線通信: 切断されました")
+                                    }
+                                }
+                                override fun onError(error: String) {
+                                    runOnUiThread {
+                                        remoteSenderStatusState.value = "error"
+                                        TaikoLogManager.log("Wi-Fi 無線通信エラー: $error")
+                                    }
+                                }
+                            })
+                        }
+                    },
+                    onNotFound = {
+                        runOnUiThread {
+                            remoteSenderStatusState.value = "error"
+                            TaikoLogManager.log("無線 (Wi-Fi) モード: 受信機が見つかりませんでした。受信側IPを手動入力するか、受信側のアプリが起動しているか確認してください。")
+                        }
+                    }
+                )
                 return
             }
 
@@ -889,6 +1017,38 @@ class MainActivity : ComponentActivity() {
         adbClient?.setEmulationMode(emulationMode)
         adbClient?.setInjectionMethod(settingsCur.injectionMethod)
         adbClient?.setGamepadKeyConfig(settingsCur.gamepadKeyConfig)
+
+        if (keys.isEmpty() && !isPressed) {
+            runOnUiThread {
+                listOf("leftKat", "leftDon", "rightDon", "rightKat").forEach { part ->
+                    updateActiveInputsState(part, false)
+                }
+            }
+            val allItems = listOf("leftKat", "leftDon", "rightDon", "rightKat").mapNotNull { part ->
+                val keyChar = if (emulationMode == "gamepad") {
+                    when (part) {
+                        "leftKat" -> settingsCur.gamepadKeyConfig.leftKat
+                        "leftDon" -> settingsCur.gamepadKeyConfig.leftDon
+                        "rightDon" -> settingsCur.gamepadKeyConfig.rightDon
+                        "rightKat" -> settingsCur.gamepadKeyConfig.rightKat
+                        else -> ""
+                    }
+                } else {
+                    when (part) {
+                        "leftKat" -> settingsCur.keyConfig.leftKat
+                        "leftDon" -> settingsCur.keyConfig.leftDon
+                        "rightDon" -> settingsCur.keyConfig.rightDon
+                        "rightKat" -> settingsCur.keyConfig.rightKat
+                        else -> ""
+                    }
+                }
+                if (keyChar.isNotEmpty()) part to keyChar else null
+            }
+            if (allItems.isNotEmpty()) {
+                adbClient?.sendMultiKeyEvents(allItems, false, settingsCur.simultaneousGroupingMs)
+            }
+            return
+        }
 
         val parts = keys.mapNotNull { rawKeyOrPart ->
             when (rawKeyOrPart) {
@@ -946,8 +1106,112 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun connectBluetoothSender(deviceAddress: String? = null, deviceName: String? = null) {
+        checkAndRequestBluetoothPermissions {
+            val addr = (deviceAddress ?: settingsState.value.anotherAndroidBluetoothDeviceAddress).trim()
+            val name = (deviceName ?: settingsState.value.anotherAndroidBluetoothDeviceName).ifEmpty { addr }
+            if (addr.isEmpty()) {
+                refreshBluetoothDevices()
+                bluetoothSenderStatusState.value = "disconnected"
+                TaikoLogManager.log("Bluetooth送信: ペアリング済みデバイスを選択してください")
+                return@checkAndRequestBluetoothPermissions
+            }
+
+            if (deviceAddress != null && deviceAddress != settingsState.value.anotherAndroidBluetoothDeviceAddress) {
+                updateAndPersistSettings(settingsState.value.copy(
+                    anotherAndroidBluetoothDeviceAddress = addr,
+                    anotherAndroidBluetoothDeviceName = name
+                ))
+            }
+
+            bluetoothSenderStatusState.value = "connecting"
+            bluetoothConnectedDeviceNameState.value = name
+
+            val sender = TaikoBluetoothSender(this)
+            bluetoothSender?.disconnect()
+            bluetoothSender = sender
+
+            sender.connect(addr, object : TaikoBluetoothSender.ConnectionListener {
+                override fun onConnected(connectedDeviceName: String) {
+                    runOnUiThread {
+                        bluetoothSenderStatusState.value = "connected"
+                        bluetoothConnectedDeviceNameState.value = connectedDeviceName
+                        TaikoLogManager.log("Bluetooth送信: 受信側「$connectedDeviceName」に接続完了 (<2ms)")
+                    }
+                }
+
+                override fun onDisconnected() {
+                    runOnUiThread {
+                        bluetoothSenderStatusState.value = "disconnected"
+                        bluetoothConnectedDeviceNameState.value = null
+                        TaikoLogManager.log("Bluetooth送信: 切断されました")
+                    }
+                }
+
+                override fun onError(error: String) {
+                    runOnUiThread {
+                        bluetoothSenderStatusState.value = "error"
+                        TaikoLogManager.log("Bluetooth送信エラー: $error")
+                    }
+                }
+            })
+        }
+    }
+
+    private fun disconnectBluetoothSender() {
+        bluetoothSender?.disconnect()
+        bluetoothSender = null
+        bluetoothSenderStatusState.value = "disconnected"
+        bluetoothConnectedDeviceNameState.value = null
+        TaikoLogManager.log("Bluetooth送信: 接続を解除しました")
+    }
+
+    private fun startBluetoothReceiver() {
+        checkAndRequestBluetoothPermissions {
+            bluetoothReceiver?.stop()
+            val receiver = TaikoBluetoothReceiver(this) { keys, isPressed ->
+                handleIncomingRemoteKeys(keys, isPressed)
+            }
+            bluetoothReceiver = receiver
+            receiver.start { connected, devName ->
+                runOnUiThread {
+                    bluetoothReceiverConnectedDeviceState.value = if (connected) devName else null
+                }
+            }
+        }
+    }
+
+    private fun stopBluetoothReceiver() {
+        bluetoothReceiver?.stop()
+        bluetoothReceiver = null
+        bluetoothReceiverConnectedDeviceState.value = null
+        TaikoLogManager.log("Bluetooth受信: 待機を停止しました")
+    }
+
+    private fun refreshBluetoothDevices() {
+        if (TaikoBluetoothManager.hasBluetoothPermissions(this)) {
+            val list = TaikoBluetoothManager.getPairedDevices(this)
+            bluetoothPairedDevicesState.value = list
+            TaikoLogManager.log("Bluetooth: ペアリング済みデバイス ${list.size} 件を取得しました")
+        }
+    }
+
+    private fun openBluetoothSettings() {
+        try {
+            val intent = Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS)
+            startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Bluetooth設定画面を開けませんでした", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun startRemoteReceiver() {
         val settings = settingsState.value
+        if (settings.anotherAndroidConnectionType == "bluetooth") {
+            startBluetoothReceiver()
+            return
+        }
+
         val port = settings.anotherAndroidPort.toIntOrNull() ?: 60002
 
         remoteReceiver?.stop()
@@ -968,18 +1232,22 @@ class MainActivity : ComponentActivity() {
         remoteReceiver?.stop()
         remoteReceiver = null
         remoteReceiverClientsCountState.value = 0
+        stopBluetoothReceiver()
     }
 
     private fun stopRemoteSender() {
         remoteSender?.disconnect()
         remoteSender = null
         remoteSenderStatusState.value = "disconnected"
+        disconnectBluetoothSender()
     }
 
     private fun onConnectionModeChanged(oldMode: String, newMode: String) {
         val settings = settingsState.value
         if (newMode == "usb-wired") {
             TaikoUsbDirectManager.stop(this)
+            disconnectBluetoothSender()
+            stopBluetoothReceiver()
             startTcpServer()
             stopRemoteReceiver()
             stopRemoteSender()
@@ -989,6 +1257,8 @@ class MainActivity : ComponentActivity() {
             // Force reset existing sockets when connection parameters change
             stopRemoteSender()
             stopRemoteReceiver()
+            disconnectBluetoothSender()
+            stopBluetoothReceiver()
 
             if (settings.anotherAndroidConnectionType == "wired") {
                 TaikoUsbDirectManager.start(this)
@@ -996,14 +1266,27 @@ class MainActivity : ComponentActivity() {
                 TaikoUsbDirectManager.stop(this)
             }
 
-            if (settings.anotherAndroidRole == "receiver") {
-                startRemoteReceiver()
+            if (settings.anotherAndroidConnectionType == "bluetooth") {
+                refreshBluetoothDevices()
+                if (settings.anotherAndroidRole == "receiver") {
+                    startBluetoothReceiver()
+                } else {
+                    if (settings.anotherAndroidBluetoothDeviceAddress.isNotEmpty()) {
+                        connectBluetoothSender(settings.anotherAndroidBluetoothDeviceAddress, settings.anotherAndroidBluetoothDeviceName)
+                    }
+                }
             } else {
-                connectRemoteSender()
+                if (settings.anotherAndroidRole == "receiver") {
+                    startRemoteReceiver()
+                } else {
+                    connectRemoteSender()
+                }
             }
             TaikoLogManager.log("Switched to Another Android mode (Role=${settings.anotherAndroidRole}, Type=${settings.anotherAndroidConnectionType})")
         } else {
             TaikoUsbDirectManager.stop(this)
+            disconnectBluetoothSender()
+            stopBluetoothReceiver()
             stopTcpServer()
             stopRemoteReceiver()
             stopRemoteSender()
@@ -1028,6 +1311,8 @@ class MainActivity : ComponentActivity() {
         stopTcpServer()
         stopRemoteSender()
         stopRemoteReceiver()
+        disconnectBluetoothSender()
+        stopBluetoothReceiver()
         TaikoUsbDirectManager.stop(this)
 
         lifecycleScope.launch {
@@ -1041,10 +1326,21 @@ class MainActivity : ComponentActivity() {
                     delay(300)
                     TaikoUsbDirectManager.restart(this@MainActivity)
                 }
-                if (settings.anotherAndroidRole == "receiver") {
-                    startRemoteReceiver()
+                if (settings.anotherAndroidConnectionType == "bluetooth") {
+                    refreshBluetoothDevices()
+                    if (settings.anotherAndroidRole == "receiver") {
+                        startBluetoothReceiver()
+                    } else {
+                        if (settings.anotherAndroidBluetoothDeviceAddress.isNotEmpty()) {
+                            connectBluetoothSender(settings.anotherAndroidBluetoothDeviceAddress, settings.anotherAndroidBluetoothDeviceName)
+                        }
+                    }
                 } else {
-                    connectRemoteSender()
+                    if (settings.anotherAndroidRole == "receiver") {
+                        startRemoteReceiver()
+                    } else {
+                        connectRemoteSender()
+                    }
                 }
                 TaikoLogManager.log("Another Android モード (${settings.anotherAndroidRole}) 再接続完了")
             } else {
@@ -1208,7 +1504,11 @@ class MainActivity : ComponentActivity() {
 
                 if (settings.connectionMode == "another_android" && settings.anotherAndroidRole == "sender") {
                     if (parts.isNotEmpty()) {
-                        remoteSender?.sendMultiKeyEvents(parts, actionIsPressed)
+                        if (settings.anotherAndroidConnectionType == "bluetooth") {
+                            bluetoothSender?.sendMultiKeyEvents(parts, actionIsPressed)
+                        } else {
+                            remoteSender?.sendMultiKeyEvents(parts, actionIsPressed)
+                        }
                         return
                     }
                 } else if (settings.connectionMode == "usb-wired") {
@@ -1273,6 +1573,39 @@ class MainActivity : ComponentActivity() {
             "rightKat" -> prev.copy(rightKat = isPressed)
             else -> prev
         }
+    }
+
+    fun resetAllInputs() {
+        activeRepeatJobs.values.forEach { it.cancel() }
+        activeRepeatJobs.clear()
+        pendingReleaseJobs.values.forEach { it.cancel() }
+        pendingReleaseJobs.clear()
+        physicallyHeldParts.clear()
+        val settings = settingsState.value
+        val activeEmulationMode = settings.activeEmulationMode
+        listOf("leftKat", "leftDon", "rightDon", "rightKat").forEach { part ->
+            val keyChar = if (activeEmulationMode == "gamepad") {
+                when (part) {
+                    "leftKat" -> settings.gamepadKeyConfig.leftKat
+                    "leftDon" -> settings.gamepadKeyConfig.leftDon
+                    "rightDon" -> settings.gamepadKeyConfig.rightDon
+                    "rightKat" -> settings.gamepadKeyConfig.rightKat
+                    else -> ""
+                }
+            } else {
+                when (part) {
+                    "leftKat" -> settings.keyConfig.leftKat
+                    "leftDon" -> settings.keyConfig.leftDon
+                    "rightDon" -> settings.keyConfig.rightDon
+                    "rightKat" -> settings.keyConfig.rightKat
+                    else -> ""
+                }
+            }
+            if (keyChar.isNotEmpty()) {
+                dispatchPhysicalKey(part, keyChar, false, fromTouch = false)
+            }
+        }
+        activeInputsState.value = RecordActiveInputs(leftKat = false, leftDon = false, rightDon = false, rightKat = false)
     }
 
     // --- Support Physical Key Bindings (Zero-latency Keyboard/Gamepad integration) ---
@@ -1392,7 +1725,12 @@ class MainActivity : ComponentActivity() {
         if (settings.connectionMode == "usb-wired") {
             startTcpServer()
         } else if (settings.connectionMode == "another_android") {
-            if (settings.anotherAndroidRole == "receiver") {
+            if (settings.anotherAndroidConnectionType == "bluetooth") {
+                refreshBluetoothDevices()
+                if (settings.anotherAndroidRole == "receiver") {
+                    startBluetoothReceiver()
+                }
+            } else if (settings.anotherAndroidRole == "receiver") {
                 startRemoteReceiver()
             }
         }
@@ -1428,5 +1766,7 @@ class MainActivity : ComponentActivity() {
         tcpServer = null
         stopRemoteReceiver()
         stopRemoteSender()
+        disconnectBluetoothSender()
+        stopBluetoothReceiver()
     }
 }

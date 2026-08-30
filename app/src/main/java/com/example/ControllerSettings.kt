@@ -42,9 +42,12 @@ data class ControllerSettings(
     var gamepadKeyConfig: GamepadKeyConfig = GamepadKeyConfig(),
     var connectionMode: String = "shizuku", // "shizuku" (この端末), "usb-wired" (PC), "another_android" (別のAndroid), "local-demo" (なし)
     var anotherAndroidRole: String = "sender", // "sender" (送信側: 太鼓) / "receiver" (受信側: ゲーム)
-    var anotherAndroidConnectionType: String = "wired", // "wired" (有線 USB通信) / "wireless" (無線 Wi-Fi/ネットワーク)
+    var anotherAndroidConnectionType: String = "wired", // "wired" (有線 USB通信: デフォルト/推奨), "wireless" (無線 Wi-Fi), "bluetooth" (Bluetooth)
+    var showWirelessOptions: Boolean = false, // 隠しモード: 「別のAndroid」を10回タップで表示/非表示トグル
     var anotherAndroidTargetIp: String = "192.168.1.100",
     var anotherAndroidPort: String = "60002",
+    var anotherAndroidBluetoothDeviceAddress: String = "",
+    var anotherAndroidBluetoothDeviceName: String = "",
     var webAdbHost: String = "127.0.0.1",
     var webAdbPort: String = "5555",
     var webAdbPairingPort: String = "",
@@ -66,12 +69,16 @@ data class ControllerSettings(
     // Layout adjustment settings (Portrait / 縦画面)
     var portraitSizePercent: Int = 100,
     var portraitVerticalPosPercent: Int = 50,
+    var portraitDonBigNotePercent: Int = 40,
+    var portraitKatBigNotePercent: Int = 100,
     var portraitPreset1: DrumPreset = DrumPreset(100, 50, 40, 100),
     var portraitPreset2: DrumPreset = DrumPreset(85, 60, 40, 100),
 
     // Layout adjustment settings (Landscape / 横画面)
     var landscapeSizePercent: Int = 100,
     var landscapeVerticalPosPercent: Int = 55,
+    var landscapeDonBigNotePercent: Int = 40,
+    var landscapeKatBigNotePercent: Int = 100,
     var landscapePreset1: DrumPreset = DrumPreset(100, 55, 40, 100),
     var landscapePreset2: DrumPreset = DrumPreset(80, 50, 40, 100),
 

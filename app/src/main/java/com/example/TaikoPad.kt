@@ -67,6 +67,10 @@ fun TaikoPad(
     val ripples = remember { mutableStateListOf<VisualRipple>() }
     var rippleIdCounter by remember { mutableLongStateOf(0L) }
     val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+
+    // Spring animation for drum sinking slightly downwards on tap (like the official Taiko game)
+    val drumBounceOffsetY = remember { Animatable(0f) }
 
     // Animation ticker state to drive frame-by-frame star rotation and fade transitions smoothly
     var animationTick by remember { mutableLongStateOf(0L) }
@@ -91,6 +95,8 @@ fun TaikoPad(
 
     val customSizePercent = if (isLandscape) settings.landscapeSizePercent else settings.portraitSizePercent
     val customVerticalPosPercent = if (isLandscape) settings.landscapeVerticalPosPercent else settings.portraitVerticalPosPercent
+    val customDonBigPercent = if (isLandscape) settings.landscapeDonBigNotePercent else settings.portraitDonBigNotePercent
+    val customKatBigPercent = if (isLandscape) settings.landscapeKatBigNotePercent else settings.portraitKatBigNotePercent
 
     // Base scale is consistent (1.0f in landscape, 0.90f in portrait) across fullscreen and preview
     val baseScale = if (isLandscape) 1.00f else 0.90f
@@ -110,15 +116,25 @@ fun TaikoPad(
     val katRimRadius = drumRadius
 
     // Dynamic Big Note DS Radii (面: 内側0~donBigRadius, フチ: 内側donMaxRadius~外側katBigOuterRadius)
-    val donBigFactor = (settings.donBigNotePercent / 100f).coerceAtLeast(0.10f)
+    val donBigFactor = (customDonBigPercent / 100f).coerceAtLeast(0.10f)
     val donBigRadius = donMaxRadius * donBigFactor
 
-    val katBigFactor = (settings.katBigNotePercent / 100f).coerceAtLeast(0.10f)
+    val katBigFactor = (customKatBigPercent / 100f).coerceAtLeast(0.10f)
     // Kat big note zone & visual Kat light effect extends from the inner boundary (donMaxRadius) outwards to katBigOuterRadius
     val katBigOuterRadius = donMaxRadius + (drumRadius - donMaxRadius) * katBigFactor
 
     // Track active parts per touch pointer ID
     val pointerPartsMap = remember { mutableMapOf<Int, List<String>>() }
+
+    // Reset touch pointers when full-screen mode toggles or when component is disposed to prevent stuck/lingering highlights
+    LaunchedEffect(isFullScreen) {
+        pointerPartsMap.clear()
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            pointerPartsMap.clear()
+        }
+    }
     // Debounce tracker for rapid-fire / chatter prevention (e.g., AYN Thor Android 13 mapping)
     val lastTriggerTimeMap = remember { mutableMapOf<String, Long>() }
 
@@ -381,6 +397,21 @@ fun TaikoPad(
                             vibrateAction(isBigNote)
                         }
 
+                        // Trigger drum sink/bounce animation (only when lightweight rendering mode is OFF)
+                        if (!settings.lightweightRenderingMode) {
+                            val bounceDistancePx = with(density) { (if (isBigNote) 9.dp else 6.dp).toPx() }
+                            scope.launch {
+                                drumBounceOffsetY.snapTo(bounceDistancePx)
+                                drumBounceOffsetY.animateTo(
+                                    targetValue = 0f,
+                                    animationSpec = spring(
+                                        dampingRatio = 0.55f,
+                                        stiffness = 1100f
+                                    )
+                                )
+                            }
+                        }
+
                         // Create visual hit ripple (only when lightweight rendering mode is OFF)
                         if (!settings.lightweightRenderingMode) {
                             val rippleId = rippleIdCounter++
@@ -424,7 +455,15 @@ fun TaikoPad(
                 true
             }
     ) {
-        // --- 1. Wooden Legs / Stand Base (太鼓の台座・台形) ---
+        // Wrap drum components in graphicsLayer to apply GPU-accelerated sink/bounce animation
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    translationY = if (settings.lightweightRenderingMode) 0f else drumBounceOffsetY.value
+                }
+        ) {
+            // --- 1. Wooden Legs / Stand Base (太鼓の台座・台形) ---
         if (drumDiameter > 0) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val standTopY = centerY + drumRadius * 0.05f
@@ -719,7 +758,7 @@ fun TaikoPad(
                 }
         )
 
-
+        } // End of inner Box with graphicsLayer
     }
 }
 
