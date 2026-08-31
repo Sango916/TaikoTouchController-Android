@@ -1827,9 +1827,9 @@ if __name__ == "__main__":
             isDark = isDark
         )
 
-        // --- 3. Drum Settings Options (太鼓の設定) ---
+        // --- 3. Drum Settings Options (太鼓の動作設定) ---
         CollapsibleSettingCard(
-            title = "🥁 太鼓の設定 (振動・大音符・ログ)",
+            title = "🥁 太鼓の動作設定 (振動・大音符・ログ)",
             subtitle = "バイブ: ${if (settings.vibration) "${settings.vibrationStrengthPercent}%" else "OFF"} / 大音符DS: ${if (settings.singleHandBigNotes) "ON" else "OFF"}",
             isExpanded = expandDrumCard,
             onExpandedChange = { expandDrumCard = it },
@@ -3203,7 +3203,7 @@ fun TaikoPresetSettingCard(
     val prefix = if (isLandscape) "横画面" else "縦画面"
 
     CollapsibleSettingCard(
-        title = "💾 プリセット設定 (${prefix})",
+        title = "💾 プリセット保存 (${prefix})",
         subtitle = "配置・サイズ・大音符範囲の保存と一括切り替え",
         isExpanded = expandPresetCard,
         onExpandedChange = onExpandPresetCardChange,
