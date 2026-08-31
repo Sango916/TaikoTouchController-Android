@@ -2886,7 +2886,7 @@ fun TaikoSizeSettingCard(
     var alphaText by remember(currentAlpha) { mutableStateOf(currentAlpha.toString()) }
 
     CollapsibleSettingCard(
-        title = "🥁 太鼓のサイズ・位置・透明度調整",
+        title = "✥ 太鼓のサイズ・位置・透明度調整",
         subtitle = if (isLandscape) "横画面 (${currentSize}% / 位置${currentPos}% / 透過${currentAlpha}%)" else "縦画面 (${currentSize}% / 位置${currentPos}% / 透過${currentAlpha}%)",
         isExpanded = expandSizeCard,
         onExpandedChange = onExpandSizeCardChange,
