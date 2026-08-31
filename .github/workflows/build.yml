@@ -34,11 +34,8 @@ jobs:
           if [ -f debug.keystore.base64 ]; then
             echo "Restoring fixed debug.keystore from repository base64..."
             python3 -c "import base64, re; text = open('debug.keystore.base64').read(); clean = re.sub(r'[^A-Za-z0-9+/=]', '', text); open('debug.keystore', 'wb').write(base64.b64decode(clean))"
-          elif [ ! -f debug.keystore ]; then
-            echo "Generating new debug.keystore..."
-            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+            cp debug.keystore ~/.android/debug.keystore
           fi
-          cp debug.keystore ~/.android/debug.keystore
           echo "=== Keystore SHA-256 Certificate Fingerprint ==="
           keytool -list -v -keystore debug.keystore -storepass android -alias androiddebugkey | grep "SHA256:" || true
 
