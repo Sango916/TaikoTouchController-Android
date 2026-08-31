@@ -25,41 +25,65 @@ android {
 
     signingConfigs {
         getByName("debug") {
-            val ksFile = file("${rootDir}/debug.keystore")
+            val rootKs = file("${rootDir}/debug.keystore")
+            val appKs = file("${projectDir}/debug.keystore")
             val b64File = file("${rootDir}/debug.keystore.base64")
-            if (!ksFile.exists() && b64File.exists()) {
+            
+            if (!rootKs.exists() && b64File.exists()) {
                 try {
                     val cleanB64 = b64File.readText().replace("\r", "").replace("\n", "").replace(" ", "").trim()
                     val bytes = Base64.getDecoder().decode(cleanB64)
-                    ksFile.writeBytes(bytes)
+                    rootKs.writeBytes(bytes)
+                    appKs.writeBytes(bytes)
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
             }
-            if (ksFile.exists()) {
-                storeFile = ksFile
+            
+            val targetKs = when {
+                rootKs.exists() -> rootKs
+                appKs.exists() -> appKs
+                else -> null
+            }
+
+            if (targetKs != null) {
+                storeFile = targetKs
                 storePassword = "android"
                 keyAlias = "androiddebugkey"
                 keyPassword = "android"
+                enableV1Signing = true
+                enableV2Signing = true
             }
         }
         create("release") {
-            val ksFile = file("${rootDir}/debug.keystore")
+            val rootKs = file("${rootDir}/debug.keystore")
+            val appKs = file("${projectDir}/debug.keystore")
             val b64File = file("${rootDir}/debug.keystore.base64")
-            if (!ksFile.exists() && b64File.exists()) {
+            
+            if (!rootKs.exists() && b64File.exists()) {
                 try {
                     val cleanB64 = b64File.readText().replace("\r", "").replace("\n", "").replace(" ", "").trim()
                     val bytes = Base64.getDecoder().decode(cleanB64)
-                    ksFile.writeBytes(bytes)
+                    rootKs.writeBytes(bytes)
+                    appKs.writeBytes(bytes)
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
             }
-            if (ksFile.exists()) {
-                storeFile = ksFile
+            
+            val targetKs = when {
+                rootKs.exists() -> rootKs
+                appKs.exists() -> appKs
+                else -> null
+            }
+
+            if (targetKs != null) {
+                storeFile = targetKs
                 storePassword = "android"
                 keyAlias = "androiddebugkey"
                 keyPassword = "android"
+                enableV1Signing = true
+                enableV2Signing = true
             }
         }
     }
