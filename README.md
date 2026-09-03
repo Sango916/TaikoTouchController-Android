@@ -5,11 +5,11 @@ Android端末上はもちろん、PCへの入力送信も可能です。
 
 <p align="center">
   <a href="https://github.com/Sango916/TaikoTouchController-Android/releases/latest">
-    <img src="https://img.shields.io/badge/Get%20it%20on-GitHub-181717?style=for-the-badge&logo=github&logoColor=white" alt="Get it on GitHub" height="42">
+    <img src="assets/badges/get-it-on-github.png" alt="Get it on GitHub" height="65">
   </a>
   &nbsp;&nbsp;
   <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22com.sango.taikocontroller%22%2C%22url%22%3A%22https%3A//github.com/Sango916/TaikoTouchController-Android%22%2C%22author%22%3A%22Sango916%22%2C%22name%22%3A%22%E5%A4%AA%E9%BC%93%E3%82%BF%E3%83%83%E3%83%81%E3%82%B3%E3%83%B3%E3%83%88%E3%83%AD%E3%83%BC%E3%83%A9%E3%83%BC%22%7D">
-    <img src="https://img.shields.io/badge/Get%20it%20on-Obtainium-007ACC?style=for-the-badge&logo=android&logoColor=white" alt="Get it on Obtainium" height="42">
+    <img src="assets/badges/get-it-on-obtainium.png" alt="Get it on Obtainium" height="65">
   </a>
 </p>
 
