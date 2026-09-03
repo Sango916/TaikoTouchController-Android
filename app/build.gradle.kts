@@ -28,15 +28,23 @@ android {
             val rootKs = file("${rootDir}/debug.keystore")
             val appKs = file("${projectDir}/debug.keystore")
             val b64File = file("${rootDir}/debug.keystore.base64")
+            val envB64 = System.getenv("KEYSTORE_BASE64")
             
-            if (!rootKs.exists() && b64File.exists()) {
-                try {
-                    val cleanB64 = b64File.readText().replace("\r", "").replace("\n", "").replace(" ", "").trim()
-                    val bytes = Base64.getDecoder().decode(cleanB64)
-                    rootKs.writeBytes(bytes)
-                    appKs.writeBytes(bytes)
-                } catch (e: Exception) {
-                    e.printStackTrace()
+            if (!rootKs.exists()) {
+                val b64Content = when {
+                    !envB64.isNullOrBlank() -> envB64
+                    b64File.exists() -> b64File.readText()
+                    else -> null
+                }
+                if (b64Content != null) {
+                    try {
+                        val cleanB64 = b64Content.replace("\r", "").replace("\n", "").replace(" ", "").trim()
+                        val bytes = Base64.getDecoder().decode(cleanB64)
+                        rootKs.writeBytes(bytes)
+                        appKs.writeBytes(bytes)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
                 }
             }
             
@@ -59,15 +67,23 @@ android {
             val rootKs = file("${rootDir}/debug.keystore")
             val appKs = file("${projectDir}/debug.keystore")
             val b64File = file("${rootDir}/debug.keystore.base64")
+            val envB64 = System.getenv("KEYSTORE_BASE64")
             
-            if (!rootKs.exists() && b64File.exists()) {
-                try {
-                    val cleanB64 = b64File.readText().replace("\r", "").replace("\n", "").replace(" ", "").trim()
-                    val bytes = Base64.getDecoder().decode(cleanB64)
-                    rootKs.writeBytes(bytes)
-                    appKs.writeBytes(bytes)
-                } catch (e: Exception) {
-                    e.printStackTrace()
+            if (!rootKs.exists()) {
+                val b64Content = when {
+                    !envB64.isNullOrBlank() -> envB64
+                    b64File.exists() -> b64File.readText()
+                    else -> null
+                }
+                if (b64Content != null) {
+                    try {
+                        val cleanB64 = b64Content.replace("\r", "").replace("\n", "").replace(" ", "").trim()
+                        val bytes = Base64.getDecoder().decode(cleanB64)
+                        rootKs.writeBytes(bytes)
+                        appKs.writeBytes(bytes)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
                 }
             }
             

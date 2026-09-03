@@ -28,14 +28,20 @@ jobs:
           cache-disabled: false
           cache-read-only: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' }}
 
-      - name: Setup Debug Keystore
+      - name: Setup Keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
           mkdir -p ~/.android
-          if [ -f debug.keystore.base64 ]; then
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "Restoring fixed debug.keystore from GitHub Secrets (KEYSTORE_BASE64)..."
+            echo "$KEYSTORE_BASE64" | tr -d '\r\n ' | base64 -d > debug.keystore
+          elif [ -f debug.keystore.base64 ]; then
             echo "Restoring fixed debug.keystore from repository base64..."
             python3 -c "import base64, re; text = open('debug.keystore.base64').read(); clean = re.sub(r'[^A-Za-z0-9+/=]', '', text); open('debug.keystore', 'wb').write(base64.b64decode(clean))"
-            cp debug.keystore ~/.android/debug.keystore
           fi
+          cp debug.keystore ~/.android/debug.keystore
+          cp debug.keystore app/debug.keystore 2>/dev/null || true
           echo "=== Keystore SHA-256 Certificate Fingerprint ==="
           keytool -list -v -keystore debug.keystore -storepass android -alias androiddebugkey | grep "SHA256:" || true
 
