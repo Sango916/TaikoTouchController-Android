@@ -136,31 +136,64 @@ def main():
         if ja:
             log(f"  -> {ja}")
 
+    def reset_adb_server(reason=""):
+        if reason:
+            log_bi(f"[ADB] Resetting ADB server: {reason} (adb kill-server)...", f"ADBサーバーを再起動中: {reason} (adb kill-server)...")
+        try:
+            subprocess.run([adb_cmd, "kill-server"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            time.sleep(0.4)
+            subprocess.run([adb_cmd, "start-server"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            time.sleep(0.4)
+        except Exception:
+            pass
+
+    log_bi("[ADB] Initializing clean ADB server state (adb kill-server)...", "クリーンなADBサーバーを初期化中 (adb kill-server)...")
+    reset_adb_server("Startup initialization")
+
+    consecutive_waits = 0
+
     def ensure_adb_forward():
+        nonlocal consecutive_waits
         try:
             # Check devices
             res = subprocess.run([adb_cmd, "devices", "-l"], capture_output=True, text=True)
             lines = res.stdout.strip().splitlines()
             online_serials = []
             unauthorized = False
+            offline = False
             for line in lines[1:]:
                 line = line.strip()
                 if not line:
                     continue
                 if "unauthorized" in line:
                     unauthorized = True
+                elif "offline" in line:
+                    offline = True
                 elif "device" in line:
                     parts = line.split()
                     if len(parts) > 0:
                         online_serials.append(parts[0])
 
+            if offline and not online_serials:
+                log_bi("[ADB] Device in offline state. Resetting ADB server...", "オフライン端末を検出。ADBサーバーをリフレッシュ中...")
+                reset_adb_server("Offline device recovery")
+                return False
+
             if not online_serials:
+                consecutive_waits += 1
+                if consecutive_waits >= 3:
+                    log_bi("[ADB] Device not detected after reconnect. Resetting ADB (adb kill-server)...", "端末が認識されないか切断されました。adb kill-server を実行して再試行中...")
+                    reset_adb_server("Reconnect retry")
+                    consecutive_waits = 0
+                    return False
+
                 if unauthorized:
                     log_bi("[WAIT] Android device detected, but unauthorized.", "Android端末が検出されましたが、未許可です。画面ロックを解除して「USBデバッグを許可」をタップしてください。")
                 else:
                     log_bi("[WAIT] No Android device detected.", "Android端末が見つかりません。USBケーブル接続と「USBデバッグ」の有効化を確認してください。")
                 return False
 
+            consecutive_waits = 0
             chosen_serial = online_serials[0]
             subprocess.run([adb_cmd, "-s", chosen_serial, "forward", "--remove", f"tcp:{PORT}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             fwd = subprocess.run([adb_cmd, "-s", chosen_serial, "forward", f"tcp:{PORT}", f"tcp:{PORT}"], capture_output=True, text=True)
@@ -218,6 +251,7 @@ def main():
 
             log_bi("[INFO] Connection closed by Android app. Waiting to reconnect...", "アプリとの接続が切断されました。再接続待機中...")
             s.close()
+            reset_adb_server("Reconnection cleanup")
             time.sleep(2)
         except (socket.timeout, ConnectionRefusedError, OSError):
             time.sleep(2)

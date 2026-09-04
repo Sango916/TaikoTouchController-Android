@@ -15,7 +15,7 @@ android {
         minSdk = 26
         targetSdk = 34
         versionCode = project.findProperty("versionCode")?.toString()?.toIntOrNull() ?: 2
-        versionName = project.findProperty("versionName")?.toString() ?: "1.0.0"
+        versionName = project.findProperty("versionName")?.toString() ?: "debug"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -145,7 +145,13 @@ android {
         val variant = this
         outputs.all {
             val output = this as? com.android.build.gradle.internal.api.BaseVariantOutputImpl
-            output?.outputFileName = "TTC-v${variant.versionName}.apk"
+            val vName = variant.versionName ?: "debug"
+            val fileName = when {
+                vName.equals("debug", ignoreCase = true) -> "TTC-debug.apk"
+                vName.startsWith("v") -> "TTC-$vName.apk"
+                else -> "TTC-v$vName.apk"
+            }
+            output?.outputFileName = fileName
         }
     }
 }

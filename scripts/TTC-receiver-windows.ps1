@@ -2,7 +2,11 @@
 # File name: TTC-receiver-windows.ps1
 # Usage: Right-click the saved file and select "Run with PowerShell"
 
-$port = 60001
+param(
+    [int]$port = 60001,
+    [string]$adbTarget = ""
+)
+
 $adbCmd = "adb"
 
 function Add-PathToUserEnvironment($dirToAdd) {
@@ -157,44 +161,133 @@ function Log-Bi($color, [string]$en, [string]$jaB64 = "") {
 Log-Bi Green "=== Taiko Controller Receiver for Windows ===" "5aSq6byT44Kz44Oz44OI44Ot44O844Op44O8IFdpbmRvd3PnlKjlj5fkv6Hjgrnjgq/jg6rjg5fjg4g="
 Log-Bi Cyan "Initializing connection helper..." "5o6l57aa44OY44Or44OR44O844KS5Yid5pyf5YyW5LitLi4u"
 
+function Reset-AdbServer([string]$reason = "") {
+    if ($reason -ne "") {
+        Log-Bi Yellow "[ADB] Resetting ADB server: $reason (adb kill-server)..." "44Kv44Oq44O844Oz44GqQURC54q25oWL44KS5L2c5oiQ44GZ44KL44Gf44KB44CBQURC44K144O844OQ44O844KS5YaN6LW35YuV44GX44G+44GZLi4u"
+    }
+    try {
+        & $adbCmd kill-server 2>$null
+        Start-Sleep -Milliseconds 400
+        & $adbCmd start-server 2>$null
+        Start-Sleep -Milliseconds 400
+    } catch {}
+}
+
+# 1. Clean up any rogue or locked ADB state at startup
+Log-Bi Cyan "[ADB] Initializing clean ADB server state (adb kill-server)..." "44Kv44Oq44O844Oz44GqQURC44K144O844OQ44O844KS5Yid5pyf5YyW5LitIChhZGIga2lsbC1zZXJ2ZXIpLi4u"
+Reset-AdbServer "Initial startup"
+
+$script:consecutiveWaitCount = 0
+
 function Ensure-AdbForward($targetPort) {
     # Check connected devices
     $rawDevices = & $adbCmd devices -l 2>&1
     $onlineSerials = @()
     $unauthorizedFound = $false
+    $offlineFound = $false
 
     foreach ($line in $rawDevices) {
         $trimmed = $line.Trim()
         if ($trimmed.Length -eq 0 -or $trimmed.StartsWith("List of devices")) { continue }
         if ($trimmed -match "^([^\s]+)\s+unauthorized") {
             $unauthorizedFound = $true
+        } elseif ($trimmed -match "^([^\s]+)\s+offline") {
+            $offlineFound = $true
         } elseif ($trimmed -match "^([^\s]+)\s+device") {
             $onlineSerials += $matches[1]
         }
     }
 
+    # If offline device detected, reset ADB connection
+    if ($offlineFound -and $onlineSerials.Count -eq 0) {
+        Log-Bi Yellow "[ADB] Device in offline state. Resetting ADB server..." "44Kq44OV44Op44Kk44Oz56uv5pyr44KS5qSc5Ye644CCQURC44K144O844OQ44O844KS44Oq44OV44Os44OD44K344Ol5LitLi4u"
+        Reset-AdbServer "Offline device recovery"
+        return $false
+    }
+
+    # If user passed an explicit adb target (e.g. -adbTarget "127.0.0.1:58526")
+    if ($adbTarget -ne "" -and $onlineSerials -notcontains $adbTarget) {
+        $connOut = & $adbCmd connect $adbTarget 2>&1
+        if ($connOut -match "connected to") {
+            $onlineSerials += $adbTarget
+        }
+    }
+
     # If no devices found, attempt auto-connecting to WSA (Windows Subsystem for Android)
     if ($onlineSerials.Count -eq 0) {
-        foreach ($wsaPort in @(58526, 5555)) {
-            $connOut = & $adbCmd connect "127.0.0.1:$wsaPort" 2>&1
-            if ($connOut -match "connected") {
-                $onlineSerials += "127.0.0.1:$wsaPort"
-                break
+        $wsaRunning = Get-Process -Name "WsaClient","WsaService","vmmemWSA" -ErrorAction SilentlyContinue
+
+        # Candidate ports: 58526 (standard WSA), 5555 (default ADB), dynamic ports 58520..58535
+        $candidateWsaPorts = @(58526, 5555, 58525, 58527, 58528, 58529, 58530)
+        try {
+            $listeners = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
+                Where-Object { ($_.LocalPort -ge 58520 -and $_.LocalPort -le 58535) -or $_.LocalPort -eq 5555 } |
+                Select-Object -ExpandProperty LocalPort -Unique
+            foreach ($p in $listeners) {
+                if ($candidateWsaPorts -notcontains $p) {
+                    $candidateWsaPorts = @($p) + $candidateWsaPorts
+                }
             }
+        } catch {}
+
+        # Candidate IPs: 127.0.0.1, plus any Hyper-V/WSA/WSL adapter subnets
+        $candidateIps = @("127.0.0.1")
+        try {
+            $wsaAdapters = Get-NetIPAddress -InterfaceAlias "*WSA*","*WSL*","*vEthernet*" -ErrorAction SilentlyContinue |
+                Where-Object { $_.AddressFamily -eq "IPv4" }
+            foreach ($adap in $wsaAdapters) {
+                $parts = $adap.IPAddress.Split('.')
+                if ($parts.Length -eq 4) {
+                    $wsaSubnetIp = "$($parts[0]).$($parts[1]).$($parts[2]).2"
+                    if ($candidateIps -notcontains $wsaSubnetIp) { $candidateIps += $wsaSubnetIp }
+                }
+            }
+        } catch {}
+
+        $wsaConnected = $false
+        foreach ($ip in $candidateIps) {
+            foreach ($wsaPort in $candidateWsaPorts) {
+                $targetEndpoint = "$ip`:$wsaPort"
+                $connOut = & $adbCmd connect $targetEndpoint 2>&1
+                if ($connOut -match "connected to" -and $connOut -notmatch "cannot connect" -and $connOut -notmatch "failed") {
+                    $onlineSerials += $targetEndpoint
+                    $wsaConnected = $true
+                    Log-Bi Green "[WSA] Successfully connected to WSA ADB ($targetEndpoint)." "V1NBIEFEQuOBqOOBruaOpee2muOBq+aIkOWKn+OBl+OBvuOBl+OBn+OAgiA="
+                    break
+                }
+            }
+            if ($wsaConnected) { break }
+        }
+
+        if (!$wsaConnected -and $null -ne $wsaRunning -and $wsaRunning.Count -gt 0) {
+            Log-Bi Yellow "[WSA] WSA (Windows Subsystem for Android) detected, but ADB port is not open." "V2luZG93cyBTdWJzeXN0ZW0gZm9yIEFuZHJvaWQgKFdTQSkg44KS5qSc5Ye644GX44G+44GX44Gf44GM44CBQURC44Od44O844OI44GM6ZaL44GE44Gm44GE44G+44Gb44KT44CC"
+            Log-Bi Yellow "      Open 'Windows Subsystem for Android Settings' -> 'Developer' -> enable 'Developer mode'." "V1NB6Kit5a6a44Ki44OX44Oq44Gu44CM6ZaL55m66ICF44CN44K/44OW44Gn44CM6ZaL55m66ICF44Oi44OD44OJ44CN44KS44Kq44Oz44Gr44GX44Gm44GP44Gg44GV44GE44CC"
         }
     }
 
     if ($onlineSerials.Count -eq 0) {
+        $script:consecutiveWaitCount++
+        # If waiting repeatedly without finding device (e.g. after USB reconnect when another program grabbed ADB):
+        # Run adb kill-server to reset ADB state
+        if ($script:consecutiveWaitCount -ge 3) {
+            Log-Bi Yellow "[ADB] Device not detected after reconnect. Resetting ADB (adb kill-server)..." "56uv5pyr44GM6KqN6K2Y44GV44KM44Gq44GE44GL5YiH5pat44GV44KM44G+44GX44Gf44CCYWRiIGtpbGwtc2VydmVyIOOCkuWun+ihjOOBl+OBpuWGjeippuihjOS4rS4uLg=="
+            Reset-AdbServer "Reconnect retry"
+            $script:consecutiveWaitCount = 0
+            return $false
+        }
+
         if ($unauthorizedFound) {
             Log-Bi Yellow "[WAIT] Android device detected, but unauthorized." "QW5kcm9pZOerr+acq+OBjOaknOWHuuOBleOCjOOBvuOBl+OBn+OBjOOAgeacquioseWPr+OBp+OBmeOAgg=="
             Log-Bi Yellow "       Please unlock phone screen and tap 'Allow USB debugging'." "44K544Oe44Ob55S76Z2i44Gu44Ot44OD44Kv44KS6Kej6Zmk44GX44CB44CMVVNC44OH44OQ44OD44Kw44KS6Kix5Y+v44CN44KS44K/44OD44OX44GX44Gm44GP44Gg44GV44GE44CC"
         } else {
             Log-Bi Yellow "[WAIT] No Android device detected." "QW5kcm9pZOerr+acq+OBjOimi+OBpOOBi+OCiuOBvuOBm+OCk+OAgg=="
-            Log-Bi Yellow "       1. Connect phone to PC via USB cable." "MS4g44K544Oe44Ob44KSVVNC44Kx44O844OW44Or44GnUEPjgavmjqXntprjgZfjgabjgY/jgaDjgZXjgYTjgII="
+            Log-Bi Yellow "       1. Connect phone to PC via USB cable (or open WSA)." "MS4g44K544Oe44Ob44KSVVNC44Kx44O844OW44Or44GnUEPjgavmjqXntprjgZfjgabjgY/jgaDjgZXjgYQgKOWQiOaIkFdTQSk="
             Log-Bi Yellow "       2. Enable 'USB debugging' in Developer options." "Mi4g56uv5pyr44Gu6ZaL55m66ICF5ZCR44GR44Kq44OX44K344On44Oz44Gn44CMVVNC44OH44OQ44OD44Kw44CN44KST07jgavjgZfjgabjgY/jgaDjgZXjgYTjgII="
         }
         return $false
     }
+
+    $script:consecutiveWaitCount = 0
 
     # Pick best target serial
     $chosenSerial = $onlineSerials[0]
@@ -268,6 +361,7 @@ while ($true) {
             $line = $reader.ReadLine()
             if ($null -eq $line) {
                 Log-Bi Yellow "[INFO] Connection closed by Android app. Waiting to reconnect..." "44Ki44OX44Oq44Go44Gu5o6l57aa44GM5YiH5pat44GV44KM44G+44GX44Gf44CC5YaN5o6l57aa5b6F5qmf5LitLi4u"
+                Reset-AdbServer "Reconnection cleanup"
                 break
             }
             
