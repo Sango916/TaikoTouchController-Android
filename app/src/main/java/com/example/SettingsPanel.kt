@@ -1644,7 +1644,9 @@ if __name__ == "__main__":
             val powerShellScript = String(android.util.Base64.decode("IyBXaW5kb3dzIFBDLXNpZGUgUmVjZWl2ZXIgZm9yIFRhaWtvIENvbnRyb2xsZXIKIyBGaWxlIGV4dGVuc2lvbiB0byBzYXZlIGFzOiBjb250cm9sbGVyLnBzMQojIFVzYWdlOiBSaWdodC1jbGljayB0aGUgc2F2ZWQgZmlsZSBhbmQgc2VsZWN0ICJSdW4gd2l0aCBQb3dlclNoZWxsIgoKJHBvcnQgPSA2MDAwMQokYWRiQ21kID0gImFkYiIKCmZ1bmN0aW9uIEFkZC1QYXRoVG9Vc2VyRW52aXJvbm1lbnQoJGRpclRvQWRkKSB7CiAgICB0cnkgewogICAgICAgICRyZXNvbHZlZERpciA9IChSZXNvbHZlLVBhdGggJGRpclRvQWRkKS5QYXRoCiAgICAgICAgJHVzZXJQYXRoID0gW1N5c3RlbS5FbnZpcm9ubWVudF06OkdldEVudmlyb25tZW50VmFyaWFibGUoIlBhdGgiLCAiVXNlciIpCiAgICAgICAgaWYgKCRudWxsIC1lcSAkdXNlclBhdGgpIHsgJHVzZXJQYXRoID0gIiIgfQogICAgICAgICRwYXRocyA9ICR1c2VyUGF0aC5TcGxpdCgnOycsIFtTeXN0ZW0uU3RyaW5nU3BsaXRPcHRpb25zXTo6UmVtb3ZlRW1wdHlFbnRyaWVzKQogICAgICAgIGlmICgkcGF0aHMgLW5vdGNvbnRhaW5zICRyZXNvbHZlZERpcikgewogICAgICAgICAgICBXcml0ZS1Ib3N0ICJSZWdpc3RlcmluZyBBREIgdG8gVXNlciBQQVRIOiAkcmVzb2x2ZWREaXIiIC1Gb3JlZ3JvdW5kQ29sb3IgQ3lhbgogICAgICAgICAgICAkbmV3UGF0aCA9IGlmICgkdXNlclBhdGguVHJpbSgpLkxlbmd0aCAtZ3QgMCkgeyAiJHVzZXJQYXRoOyRyZXNvbHZlZERpciIgfSBlbHNlIHsgJHJlc29sdmVkRGlyIH0KICAgICAgICAgICAgW1N5c3RlbS5FbnZpcm9ubWVudF06OlNldEVudmlyb25tZW50VmFyaWFibGUoIlBhdGgiLCAkbmV3UGF0aCwgIlVzZXIiKQogICAgICAgICAgICAkZW52OlBhdGggPSBbU3lzdGVtLkVudmlyb25tZW50XTo6R2V0RW52aXJvbm1lbnRWYXJpYWJsZSgiUGF0aCIsIk1hY2hpbmUiKSArICI7IiArIFtTeXN0ZW0uRW52aXJvbm1lbnRdOjpHZXRFbnZpcm9ubWVudFZhcmlhYmxlKCJQYXRoIiwiVXNlciIpCiAgICAgICAgICAgIFdyaXRlLUhvc3QgIkFEQiBzdWNjZXNzZnVsbHkgYWRkZWQgdG8gUEFUSCEiIC1Gb3JlZ3JvdW5kQ29sb3IgR3JlZW4KICAgICAgICB9CiAgICB9IGNhdGNoIHsKICAgICAgICBXcml0ZS1Ib3N0ICJOb3RlOiBDb3VsZCBub3QgYXV0b21hdGljYWxseSB1cGRhdGUgVXNlciBQQVRIOiAkXyIgLUZvcmVncm91bmRDb2xvciBZZWxsb3cKICAgIH0KfQoKIyBDaGVjayBpZiBhZGIgaXMgaW4gUEFUSAppZiAoIShHZXQtQ29tbWFuZCBhZGIgLUVycm9yQWN0aW9uIFNpbGVudGx5Q29udGludWUpKSB7CiAgICBXcml0ZS1Ib3N0ICJBREIgaXMgbm90IGluIFBBVEguIENoZWNraW5nIGxvY2FsIHBsYXRmb3JtLXRvb2xzLi4uIiAtRm9yZWdyb3VuZENvbG9yIFllbGxvdwogICAgCiAgICBpZiAoVGVzdC1QYXRoICIuXHBsYXRmb3JtLXRvb2xzXGFkYi5leGUiKSB7CiAgICAgICAgJGFkYkNtZCA9ICIuXHBsYXRmb3JtLXRvb2xzXGFkYi5leGUiCiAgICAgICAgV3JpdGUtSG9zdCAiRm91bmQgbG9jYWwgQURCIGluIHBsYXRmb3JtLXRvb2xzIGZvbGRlci4iIC1Gb3JlZ3JvdW5kQ29sb3IgR3JlZW4KICAgICAgICBBZGQtUGF0aFRvVXNlckVudmlyb25tZW50ICIuXHBsYXRmb3JtLXRvb2xzIgogICAgfSBlbHNlIHsKICAgICAgICBXcml0ZS1Ib3N0ICJUcnlpbmcgdG8gaW5zdGFsbCBBREIgdmlhIHdpbmdldC4uLiIgLUZvcmVncm91bmRDb2xvciBDeWFuCiAgICAgICAgaWYgKEdldC1Db21tYW5kIHdpbmdldCAtRXJyb3JBY3Rpb24gU2lsZW50bHlDb250aW51ZSkgewogICAgICAgICAgICB0cnkgewogICAgICAgICAgICAgICAgd2luZ2V0IGluc3RhbGwgR29vZ2xlLkFkYiAtLXNpbGVudCAtLWFjY2VwdC1zb3VyY2UtYWdyZWVtZW50cyAtLWFjY2VwdC1wYWNrYWdlLWFncmVlbWVudHMgfCBPdXQtTnVsbAogICAgICAgICAgICAgICAgJGVudjpQYXRoID0gW1N5c3RlbS5FbnZpcm9ubWVudF06OkdldEVudmlyb25tZW50VmFyaWFibGUoIlBhdGgiLCJNYWNoaW5lIikgKyAiOyIgKyBbU3lzdGVtLkVudmlyb25tZW50XTo6R2V0RW52aXJvbm1lbnRWYXJpYWJsZSgiUGF0aCIsIlVzZXIiKQogICAgICAgICAgICB9IGNhdGNoIHt9CiAgICAgICAgfQoKICAgICAgICBpZiAoR2V0LUNvbW1hbmQgYWRiIC1FcnJvckFjdGlvbiBTaWxlbnRseUNvbnRpbnVlKSB7CiAgICAgICAgICAgICRhZGJDbWQgPSAiYWRiIgogICAgICAgICAgICBXcml0ZS1Ib3N0ICJBREIgaW5zdGFsbGVkIHZpYSB3aW5nZXQgc3VjY2Vzc2Z1bGx5ISIgLUZvcmVncm91bmRDb2xvciBHcmVlbgogICAgICAgIH0gZWxzZSB7CiAgICAgICAgICAgIFdyaXRlLUhvc3QgIndpbmdldCB1bmF2YWlsYWJsZSBvciBwZW5kaW5nLiBEb3dubG9hZGluZyBvZmZpY2lhbCBBbmRyb2lkIFNESyBQbGF0Zm9ybSBUb29scy4uLiIgLUZvcmVncm91bmRDb2xvciBZZWxsb3cKICAgICAgICAgICAgJHVybCA9ICJodHRwczovL2RsLmdvb2dsZS5jb20vYW5kcm9pZC9yZXBvc2l0b3J5L3BsYXRmb3JtLXRvb2xzLWxhdGVzdC13aW5kb3dzLnppcCIKICAgICAgICAgICAgJG91dHB1dCA9ICIuXHBsYXRmb3JtLXRvb2xzLnppcCIKICAgICAgICAgICAgdHJ5IHsKICAgICAgICAgICAgICAgIEludm9rZS1XZWJSZXF1ZXN0IC1VcmkgJHVybCAtT3V0RmlsZSAkb3V0cHV0CiAgICAgICAgICAgICAgICBFeHBhbmQtQXJjaGl2ZSAtUGF0aCAkb3V0cHV0IC1EZXN0aW5hdGlvblBhdGggIi4iIC1Gb3JjZQogICAgICAgICAgICAgICAgUmVtb3ZlLUl0ZW0gJG91dHB1dAogICAgICAgICAgICAgICAgaWYgKFRlc3QtUGF0aCAiLlxwbGF0Zm9ybS10b29sc1xhZGIuZXhlIikgewogICAgICAgICAgICAgICAgICAgICRhZGJDbWQgPSAiLlxwbGF0Zm9ybS10b29sc1xhZGIuZXhlIgogICAgICAgICAgICAgICAgICAgIFdyaXRlLUhvc3QgIkFEQiBkb3dubG9hZGVkIGFuZCBleHRyYWN0ZWQgc3VjY2Vzc2Z1bGx5ISIgLUZvcmVncm91bmRDb2xvciBHcmVlbgogICAgICAgICAgICAgICAgICAgIEFkZC1QYXRoVG9Vc2VyRW52aXJvbm1lbnQgIi5ccGxhdGZvcm0tdG9vbHMiCiAgICAgICAgICAgICAgICB9IGVsc2UgewogICAgICAgICAgICAgICAgICAgIFdyaXRlLUhvc3QgIkVycm9yOiBGYWlsZWQgdG8gZXh0cmFjdCBwbGF0Zm9ybS10b29scy4iIC1Gb3JlZ3JvdW5kQ29sb3IgUmVkCiAgICAgICAgICAgICAgICAgICAgUGF1c2UKICAgICAgICAgICAgICAgICAgICBFeGl0CiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgIH0gY2F0Y2ggewogICAgICAgICAgICAgICAgV3JpdGUtSG9zdCAiRXJyb3I6IENvdWxkIG5vdCBkb3dubG9hZCBBREIuIFBsZWFzZSBpbnN0YWxsIEFEQiBvciBwbGF0Zm9ybS10b29scyBtYW51YWxseS4iIC1Gb3JlZ3JvdW5kQ29sb3IgUmVkCiAgICAgICAgICAgICAgICBQYXVzZQogICAgICAgICAgICAgICAgRXhpdAogICAgICAgICAgICB9CiAgICAgICAgfQogICAgfQp9IGVsc2UgewogICAgaWYgKFRlc3QtUGF0aCAiLlxwbGF0Zm9ybS10b29sc1xhZGIuZXhlIikgewogICAgICAgIEFkZC1QYXRoVG9Vc2VyRW52aXJvbm1lbnQgIi5ccGxhdGZvcm0tdG9vbHMiCiAgICB9Cn0KCiMgQWRkIEMjIGhlbHBlciBmb3IgV2luMzIgbG93LWxhdGVuY3kga2V5IGV2ZW50cyB3aXRoIERpcmVjdFgvRGlyZWN0SW5wdXQgSGFyZHdhcmUgU2NhbkNvZGUgc3VwcG9ydAppZiAoISgiVGFpa29LZXlib2FyZCIgLWFzIFt0eXBlXSkpIHsKICAgICRTaWduYXR1cmUgPSBAIgp1c2luZyBTeXN0ZW07CnVzaW5nIFN5c3RlbS5SdW50aW1lLkludGVyb3BTZXJ2aWNlczsKCnB1YmxpYyBjbGFzcyBUYWlrb0tleWJvYXJkIHsKICAgIFtEbGxJbXBvcnQoInVzZXIzMi5kbGwiKV0KICAgIHB1YmxpYyBzdGF0aWMgZXh0ZXJuIHZvaWQga2V5YmRfZXZlbnQoYnl0ZSBiVmssIGJ5dGUgYlNjYW4sIHVpbnQgZHdGbGFncywgVUludFB0ciBkd0V4dHJhSW5mbyk7CgogICAgW0RsbEltcG9ydCgidXNlcjMyLmRsbCIpXQogICAgcHVibGljIHN0YXRpYyBleHRlcm4gdWludCBNYXBWaXJ0dWFsS2V5KHVpbnQgdUNvZGUsIHVpbnQgdU1hcFR5cGUpOwoKICAgIFtEbGxJbXBvcnQoInVzZXIzMi5kbGwiLCBTZXRMYXN0RXJyb3IgPSB0cnVlKV0KICAgIHB1YmxpYyBzdGF0aWMgZXh0ZXJuIHVpbnQgU2VuZElucHV0KHVpbnQgbklucHV0cywgSW50UHRyIHBJbnB1dHMsIGludCBjYlNpemUpOwoKICAgIHByaXZhdGUgY29uc3QgdWludCBLRVlFVkVOVEZfS0VZVVAgPSAweDAwMDI7CgogICAgcHJpdmF0ZSBzdGF0aWMgdm9pZCBTZW5kRG93blJhdyhieXRlIHZrZXksIHVzaG9ydCBzY2FuQ29kZSkgewogICAgICAgIGtleWJkX2V2ZW50KHZrZXksIChieXRlKXNjYW5Db2RlLCAwLCBVSW50UHRyLlplcm8pOwoKICAgICAgICB0cnkgewogICAgICAgICAgICBpbnQgY2JTaXplID0gKEludFB0ci5TaXplID09IDgpID8gNDAgOiAyODsKICAgICAgICAgICAgYnl0ZVtdIGlucHV0Qnl0ZXMgPSBuZXcgYnl0ZVtjYlNpemVdOwogICAgICAgICAgICBCaXRDb252ZXJ0ZXIuR2V0Qnl0ZXMoKHVpbnQpMSkuQ29weVRvKGlucHV0Qnl0ZXMsIDApOyAvLyBJTlBVVF9LRVlCT0FSRAogICAgICAgICAgICBpbnQga2lPZmZzZXQgPSAoSW50UHRyLlNpemUgPT0gOCkgPyA4IDogNDsKICAgICAgICAgICAgQml0Q29udmVydGVyLkdldEJ5dGVzKHNjYW5Db2RlKS5Db3B5VG8oaW5wdXRCeXRlcywga2lPZmZzZXQgKyAyKTsgLy8gd1NjYW4KICAgICAgICAgICAgQml0Q29udmVydGVyLkdldEJ5dGVzKCh1aW50KTB4MDAwOCkuQ29weVRvKGlucHV0Qnl0ZXMsIGtpT2Zmc2V0ICsgNCk7IC8vIEtFWUVWRU5URl9TQ0FOQ09ERQogICAgICAgICAgICBHQ0hhbmRsZSBoYW5kbGUgPSBHQ0hhbmRsZS5BbGxvYyhpbnB1dEJ5dGVzLCBHQ0hhbmRsZVR5cGUuUGlubmVkKTsKICAgICAgICAgICAgU2VuZElucHV0KDEsIGhhbmRsZS5BZGRyT2ZQaW5uZWRPYmplY3QoKSwgY2JTaXplKTsKICAgICAgICAgICAgaGFuZGxlLkZyZWUoKTsKICAgICAgICB9IGNhdGNoIHt9CiAgICB9CgogICAgcHJpdmF0ZSBzdGF0aWMgdm9pZCBTZW5kVXBSYXcoYnl0ZSB2a2V5LCB1c2hvcnQgc2NhbkNvZGUpIHsKICAgICAgICBrZXliZF9ldmVudCh2a2V5LCAoYnl0ZSlzY2FuQ29kZSwgS0VZRVZFTlRGX0tFWVVQLCBVSW50UHRyLlplcm8pOwoKICAgICAgICB0cnkgewogICAgICAgICAgICBpbnQgY2JTaXplID0gKEludFB0ci5TaXplID09IDgpID8gNDAgOiAyODsKICAgICAgICAgICAgYnl0ZVtdIGlucHV0Qnl0ZXMgPSBuZXcgYnl0ZVtjYlNpemVdOwogICAgICAgICAgICBCaXRDb252ZXJ0ZXIuR2V0Qnl0ZXMoKHVpbnQpMSkuQ29weVRvKGlucHV0Qnl0ZXMsIDApOyAvLyBJTlBVVF9LRVlCT0FSRAogICAgICAgICAgICBpbnQga2lPZmZzZXQgPSAoSW50UHRyLlNpemUgPT0gOCkgPyA4IDogNDsKICAgICAgICAgICAgQml0Q29udmVydGVyLkdldEJ5dGVzKHNjYW5Db2RlKS5Db3B5VG8oaW5wdXRCeXRlcywga2lPZmZzZXQgKyAyKTsgLy8gd1NjYW4KICAgICAgICAgICAgQml0Q29udmVydGVyLkdldEJ5dGVzKCh1aW50KTB4MDAwYSkuQ29weVRvKGlucHV0Qnl0ZXMsIGtpT2Zmc2V0ICsgNCk7IC8vIEtFWUVWRU5URl9TQ0FOQ09ERSB8IEtFWUVWRU5URl9LRVlVUAogICAgICAgICAgICBHQ0hhbmRsZSBoYW5kbGUgPSBHQ0hhbmRsZS5BbGxvYyhpbnB1dEJ5dGVzLCBHQ0hhbmRsZVR5cGUuUGlubmVkKTsKICAgICAgICAgICAgU2VuZElucHV0KDEsIGhhbmRsZS5BZGRyT2ZQaW5uZWRPYmplY3QoKSwgY2JTaXplKTsKICAgICAgICAgICAgaGFuZGxlLkZyZWUoKTsKICAgICAgICB9IGNhdGNoIHt9CiAgICB9CgogICAgcHVibGljIHN0YXRpYyB2b2lkIERvd24oYnl0ZSB2a2V5KSB7CiAgICAgICAgdXNob3J0IHNjYW5Db2RlID0gKHVzaG9ydClNYXBWaXJ0dWFsS2V5KHZrZXksIDApOwogICAgICAgIFNlbmREb3duUmF3KHZrZXksIHNjYW5Db2RlKTsKICAgIH0KCiAgICBwdWJsaWMgc3RhdGljIHZvaWQgVXAoYnl0ZSB2a2V5KSB7CiAgICAgICAgdXNob3J0IHNjYW5Db2RlID0gKHVzaG9ydClNYXBWaXJ0dWFsS2V5KHZrZXksIDApOwogICAgICAgIFNlbmRVcFJhdyh2a2V5LCBzY2FuQ29kZSk7CiAgICB9Cn0KIkAKICAgIHRyeSB7CiAgICAgICAgQWRkLVR5cGUgLVR5cGVEZWZpbml0aW9uICRTaWduYXR1cmUgLUVycm9yQWN0aW9uIFN0b3AKICAgIH0gY2F0Y2ggewogICAgICAgIFdyaXRlLUhvc3QgIkZhaWxlZCB0byBjb21waWxlIGtleWJvYXJkIGhlbHBlcjogJF8iIC1Gb3JlZ3JvdW5kQ29sb3IgUmVkCiAgICB9Cn0KCldyaXRlLUhvc3QgIj09PSBUYWlrbyBDb250cm9sbGVyIFJlY2VpdmVyIGZvciBXaW5kb3dzID09PSIgLUZvcmVncm91bmRDb2xvciBHcmVlbgpXcml0ZS1Ib3N0ICJTZXR0aW5nIHVwIEFEQiBwb3J0IGZvcndhcmRpbmcgKHRjcDokcG9ydCkuLi4iIC1Gb3JlZ3JvdW5kQ29sb3IgQ3lhbgp0cnkgeyAmICRhZGJDbWQgZm9yd2FyZCAtLXJlbW92ZSB0Y3A6JHBvcnQgMj4kbnVsbCB9IGNhdGNoIHt9CgokZndkT3V0ID0gJiAkYWRiQ21kIGZvcndhcmQgdGNwOiRwb3J0IHRjcDokcG9ydCAyPiYxCmlmICgkTEFTVEVYSVRDT0RFIC1uZSAwKSB7CiAgICBXcml0ZS1Ib3N0ICJOb3RpY2UgZnJvbSBBREI6ICRmd2RPdXQiIC1Gb3JlZ3JvdW5kQ29sb3IgWWVsbG93CiAgICBXcml0ZS1Ib3N0ICJFbnN1cmUgQW5kcm9pZCBkZXZpY2UgaXMgY29ubmVjdGVkIHZpYSBVU0IgYW5kIFVTQiBkZWJ1Z2dpbmcgaXMgZW5hYmxlZCEiIC1Gb3JlZ3JvdW5kQ29sb3IgWWVsbG93Cn0KCldyaXRlLUhvc3QgIkNvbm5lY3RpbmcgdG8gQW5kcm9pZCBUYWlrbyBjb250cm9sbGVyIG9uIGxvY2FsaG9zdDokcG9ydC4uLiIgLUZvcmVncm91bmRDb2xvciBDeWFuCgp3aGlsZSAoJHRydWUpIHsKICAgICRjbGllbnQgPSAkbnVsbAogICAgdHJ5IHsKICAgICAgICAkY2xpZW50ID0gTmV3LU9iamVjdCBTeXN0ZW0uTmV0LlNvY2tldHMuVGNwQ2xpZW50CiAgICAgICAgJGNvbm5lY3RSZXN1bHQgPSAkY2xpZW50LkJlZ2luQ29ubmVjdCgiMTI3LjAuMC4xIiwgJHBvcnQsICRudWxsLCAkbnVsbCkKICAgICAgICAkc3VjY2VzcyA9ICRjb25uZWN0UmVzdWx0LkFzeW5jV2FpdEhhbmRsZS5XYWl0T25lKDMwMDAsICRmYWxzZSkKICAgICAgICBpZiAoISRzdWNjZXNzKSB7CiAgICAgICAgICAgICRjbGllbnQuQ2xvc2UoKQogICAgICAgICAgICB0aHJvdyAiQ29ubmVjdGlvbiB0aW1lb3V0IgogICAgICAgIH0KICAgICAgICAkY2xpZW50LkVuZENvbm5lY3QoJGNvbm5lY3RSZXN1bHQpCgogICAgICAgICRzdHJlYW0gPSAkY2xpZW50LkdldFN0cmVhbSgpCiAgICAgICAgJHN0cmVhbS5SZWFkVGltZW91dCA9IDMwMDAKICAgICAgICAkcmVhZGVyID0gTmV3LU9iamVjdCBTeXN0ZW0uSU8uU3RyZWFtUmVhZGVyKCRzdHJlYW0pCgogICAgICAgICMgUmVhZCBiYW5uZXIgdG8gdmVyaWZ5IHJlYWwgYXBwIGNvbm5lY3Rpb24KICAgICAgICAkYmFubmVyID0gJHJlYWRlci5SZWFkTGluZSgpCiAgICAgICAgaWYgKCRudWxsIC1lcSAkYmFubmVyKSB7CiAgICAgICAgICAgICRjbGllbnQuQ2xvc2UoKQogICAgICAgICAgICBXcml0ZS1Ib3N0ICJXYWl0aW5nIGZvciBBbmRyb2lkIGFwcCBjb25uZWN0aW9uLi4uIChyZXRyeWluZyBpbiAyIHNlY29uZHMpIiAtRm9yZWdyb3VuZENvbG9yIFllbGxvdwogICAgICAgICAgICBTdGFydC1TbGVlcCAtU2Vjb25kcyAyCiAgICAgICAgICAgIGNvbnRpbnVlCiAgICAgICAgfQoKICAgICAgICAkc3RyZWFtLlJlYWRUaW1lb3V0ID0gLTEKICAgICAgICBXcml0ZS1Ib3N0ICJDb25uZWN0ZWQgc3VjY2Vzc2Z1bGx5IHRvIFRhaWtvIEFwcCEgU3RhcnQgeW91ciBnYW1lIG5vdyEiIC1Gb3JlZ3JvdW5kQ29sb3IgR3JlZW4KICAgICAgICAKICAgICAgICB3aGlsZSAoJGNsaWVudC5Db25uZWN0ZWQpIHsKICAgICAgICAgICAgJGxpbmUgPSAkcmVhZGVyLlJlYWRMaW5lKCkKICAgICAgICAgICAgaWYgKCRudWxsIC1lcSAkbGluZSkgewogICAgICAgICAgICAgICAgV3JpdGUtSG9zdCAiRGlzY29ubmVjdGVkIGJ5IEFuZHJvaWQgYXBwLiIgLUZvcmVncm91bmRDb2xvciBZZWxsb3cKICAgICAgICAgICAgICAgIGJyZWFrCiAgICAgICAgICAgIH0KICAgICAgICAgICAgCiAgICAgICAgICAgICRsaW5lID0gJGxpbmUuVHJpbSgpCiAgICAgICAgICAgIGlmICgkbGluZS5MZW5ndGggLWVxIDApIHsgY29udGludWUgfQoKICAgICAgICAgICAgJHBhcnRzID0gJGxpbmUuU3BsaXQoJyAnKQogICAgICAgICAgICBpZiAoJHBhcnRzLkxlbmd0aCAtZ2UgMikgewogICAgICAgICAgICAgICAgJGFjdGlvbiA9ICRwYXJ0c1swXQogICAgICAgICAgICAgICAgZm9yICgkaSA9IDE7ICRpIC1sdCAkcGFydHMuTGVuZ3RoOyAkaSsrKSB7CiAgICAgICAgICAgICAgICAgICAgJGtleSA9ICRwYXJ0c1skaV0uVG9VcHBlcigpCiAgICAgICAgICAgICAgICAgICAgaWYgKCRrZXkuTGVuZ3RoIC1ndCAwKSB7CiAgICAgICAgICAgICAgICAgICAgICAgIFdyaXRlLUhvc3QgIltLRVldICRhY3Rpb24gLT4gJGtleSIgLUZvcmVncm91bmRDb2xvciBDeWFuCiAgICAgICAgICAgICAgICAgICAgICAgICR2a2V5ID0gW2J5dGVdW2NoYXJdJGtleVswXQogICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgaWYgKCRhY3Rpb24gLWVxICJET1dOIikgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgW1RhaWtvS2V5Ym9hcmRdOjpEb3duKCR2a2V5KQogICAgICAgICAgICAgICAgICAgICAgICB9IGVsc2VpZiAoJGFjdGlvbiAtZXEgIlVQIikgewogICAgICAgICAgICAgICAgICAgICAgICAgICAgW1RhaWtvS2V5Ym9hcmRdOjpVcCgkdmtleSkKICAgICAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgfQogICAgICAgIH0KICAgIH0gY2F0Y2ggewogICAgICAgIFdyaXRlLUhvc3QgIldhaXRpbmcgZm9yIEFuZHJvaWQgYXBwIGNvbm5lY3Rpb24uLi4gKHJldHJ5aW5nIGluIDIgc2Vjb25kcykiIC1Gb3JlZ3JvdW5kQ29sb3IgWWVsbG93CiAgICB9IGZpbmFsbHkgewogICAgICAgIGlmICgkbnVsbCAtbmUgJGNsaWVudCkgewogICAgICAgICAgICB0cnkgeyAkY2xpZW50LkNsb3NlKCkgfSBjYXRjaCB7fQogICAgICAgIH0KICAgIH0KICAgIFN0YXJ0LVNsZWVwIC1TZWNvbmRzIDIKfQo=", android.util.Base64.DEFAULT), java.nio.charset.StandardCharsets.UTF_8)
 
             var activeScriptTab by remember { mutableStateOf(0) } // 0 = Windows, 1 = macOS, 2 = Linux
+            var showManualScriptCopy by remember { mutableStateOf(false) }
             val clipboardManager = LocalClipboardManager.current
+            val uriHandler = LocalUriHandler.current
             val scriptText = when (activeScriptTab) {
                 0 -> powerShellScript
                 1 -> macOSScript
@@ -1708,110 +1710,172 @@ if __name__ == "__main__":
 
                     Column {
                         Text(
-                            text = "📖 接続手順:",
+                            text = "📖 接続手順 (推奨: GitHub Releases からダウンロード):",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF78350F).invertIfDark(isDark)
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "1. 端末の「USBデバッグ」を有効にしてPCに接続します。\n" +
-                                   "2. お使いのPCのOSに合わせたタブを選択し、下の「スクリプトをコピー」ボタンを押します。\n" +
-                                   "3. コピーした内容をPC側で任意のファイル名・指定された拡張子で保存します。\n" +
-                                   "   ※ macOS / Linux版は初回実行時にファイルの実行権限（実行許可）の設定が必要です。\n" +
-                                   "      (ファイルプロパティ/情報を見る画面、またはターミナルの chmod +x コマンド等から設定可能です)\n" +
-                                   "   ※ macOS版は初回実行時にキー入力送信のためアクセシビリティ権限の許可が必要です。\n" +
-                                   "      (システム設定の「プライバシーとセキュリティ」→「アクセシビリティ」からターミナルをONに設定可能です)\n" +
-                                   "4. 保存したファイルを実行すると、ADB環境の自動構築・ポート転送・キー入力ツールの準備・接続まで全自動で行われます！",
+                            text = "1. 端末の「USBデバッグ」を有効にしてPCにUSB接続します。\n" +
+                                   "2. 下のボタンからGitHub Releasesを開き、お使いのPC環境に合わせたスクリプトをダウンロードします：\n" +
+                                   "   ・Windows用: taiko-controller-windows.ps1\n" +
+                                   "   ・macOS用: taiko-controller-macos.command\n" +
+                                   "   ・Linux用: taiko-controller-linux.sh\n" +
+                                   "3. ダウンロードしたスクリプトを実行すると、ADB環境の自動構築・ポート転送・キー入力ツールの準備・接続まで全自動で行われます！\n" +
+                                   "   ※ Windows版: スクリプトを右クリックして「PowerShell で実行」を選択します。\n" +
+                                   "   ※ macOS / Linux版: 初回実行時にファイルの実行権限（chmod +x）の設定が必要です。\n" +
+                                   "   ※ macOS版: 初回実行時にキー入力送信のためアクセシビリティ権限の許可が必要です。\n\n" +
+                                   "※ テキストから手動でコピーして作成する場合は、下の「手動作成用スクリプトを表示」を展開してください。",
                             fontSize = 10.sp,
                             color = if (isDark) Color.White else Color.DarkGray,
                             lineHeight = 14.sp
                         )
                     }
 
-                    Divider(color = Color(0xFF78350F).copy(alpha = 0.10f).invertIfDark(isDark))
-
-                    // Script tabs
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    // GitHub Releases Download Button
+                    Button(
+                        onClick = {
+                            uriHandler.openUri("https://github.com/Sango916/TaikoTouchController-Android/releases/latest")
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isDark) Color(0xFF374151) else Color(0xFF1F2937),
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 38.dp)
                     ) {
-                        val tabs = listOf("Windows (.ps1)", "macOS (.command)", "Linux (.sh)")
-                        tabs.forEachIndexed { index, label ->
-                            val isSelected = activeScriptTab == index
-                            Button(
-                                onClick = { activeScriptTab = index },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (isSelected) Color(0xFF78350F).invertIfDark(isDark) else Color(0xFFEADCC9).invertIfDark(isDark),
-                                    contentColor = if (isSelected) Color.White else Color(0xFF78350F).invertIfDark(isDark)
-                                ),
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .heightIn(min = 34.dp)
-                            ) {
-                                Text(
-                                    text = label,
-                                    fontSize = 9.sp,
-                                    lineHeight = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        }
+                        Text(
+                            text = "📥 GitHub Releases からスクリプトをダウンロード",
+                            fontSize = 11.sp,
+                            lineHeight = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
                     }
 
-                    // Code Viewer box
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(130.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFFEADCC9).copy(alpha = 0.3f).invertIfDark(isDark))
-                            .border(1.dp, Color(0xFF78350F).copy(alpha = 0.1f).invertIfDark(isDark), RoundedCornerShape(8.dp))
-                            .padding(8.dp)
+                    Divider(color = Color(0xFF78350F).copy(alpha = 0.10f).invertIfDark(isDark))
+
+                    // Collapsible manual script copy section
+                    OutlinedButton(
+                        onClick = { showManualScriptCopy = !showManualScriptCopy },
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = Color(0xFF78350F).invertIfDark(isDark)
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF78350F).copy(alpha = 0.25f).invertIfDark(isDark)),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 34.dp)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .verticalScroll(rememberScrollState())
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
-                                text = scriptText,
-                                color = Color(0xFF4B2E1E).invertIfDark(isDark),
-                                fontSize = 9.sp,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                lineHeight = 12.sp
+                                text = "📋 テキストからスクリプトを手動コピーして作成する",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Icon(
+                                imageVector = if (showManualScriptCopy) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = if (showManualScriptCopy) "閉じる" else "展開する",
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                     }
 
-                    // Copy Button
-                    Button(
-                        onClick = {
-                            clipboardManager.setText(AnnotatedString(scriptText))
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF78350F).invertIfDark(isDark),
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 36.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ContentCopy,
-                            contentDescription = "Copy script",
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "スクリプトをコピー",
-                            fontSize = 11.sp,
-                            lineHeight = 13.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                    AnimatedVisibility(visible = showManualScriptCopy) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Script tabs
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                val tabs = listOf("Windows (.ps1)", "macOS (.command)", "Linux (.sh)")
+                                tabs.forEachIndexed { index, label ->
+                                    val isSelected = activeScriptTab == index
+                                    Button(
+                                        onClick = { activeScriptTab = index },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (isSelected) Color(0xFF78350F).invertIfDark(isDark) else Color(0xFFEADCC9).invertIfDark(isDark),
+                                            contentColor = if (isSelected) Color.White else Color(0xFF78350F).invertIfDark(isDark)
+                                        ),
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .heightIn(min = 32.dp)
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            fontSize = 9.sp,
+                                            lineHeight = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Code Viewer box
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(130.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFFEADCC9).copy(alpha = 0.3f).invertIfDark(isDark))
+                                    .border(1.dp, Color(0xFF78350F).copy(alpha = 0.1f).invertIfDark(isDark), RoundedCornerShape(8.dp))
+                                    .padding(8.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .verticalScroll(rememberScrollState())
+                                ) {
+                                    Text(
+                                        text = scriptText,
+                                        color = Color(0xFF4B2E1E).invertIfDark(isDark),
+                                        fontSize = 9.sp,
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                        lineHeight = 12.sp
+                                    )
+                                }
+                            }
+
+                            // Copy Button
+                            Button(
+                                onClick = {
+                                    clipboardManager.setText(AnnotatedString(scriptText))
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF78350F).invertIfDark(isDark),
+                                    contentColor = Color.White
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ContentCopy,
+                                    contentDescription = "Copy script",
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                val scriptFileName = when (activeScriptTab) {
+                                    0 -> "taiko-controller-windows.ps1"
+                                    1 -> "taiko-controller-macos.command"
+                                    else -> "taiko-controller-linux.sh"
+                                }
+                                Text(
+                                    text = "$scriptFileName の内容をコピー",
+                                    fontSize = 11.sp,
+                                    lineHeight = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                     }
                 }
             }
