@@ -94,36 +94,73 @@ def main():
         except Exception as e:
             log(f"Key release error: {e}")
 
-    log(f"Setting up ADB port forwarding (tcp:{PORT})...")
-    subprocess.run([adb_cmd, "forward", "--remove", f"tcp:{PORT}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    fwd_proc = subprocess.run([adb_cmd, "forward", f"tcp:{PORT}", f"tcp:{PORT}"], capture_output=True, text=True)
-    if fwd_proc.returncode != 0:
-        log(f"ADB forward message: {fwd_proc.stderr.strip() or fwd_proc.stdout.strip()}")
-        log("Ensure your Android device is USB connected with USB debugging enabled.")
+    def ensure_adb_forward():
+        try:
+            # Check devices
+            res = subprocess.run([adb_cmd, "devices", "-l"], capture_output=True, text=True)
+            lines = res.stdout.strip().splitlines()
+            online_serials = []
+            unauthorized = False
+            for line in lines[1:]:
+                line = line.strip()
+                if not line:
+                    continue
+                if "unauthorized" in line:
+                    unauthorized = True
+                elif "device" in line:
+                    parts = line.split()
+                    if len(parts) > 0:
+                        online_serials.append(parts[0])
 
-    log(f"Connecting to Android Taiko controller on localhost:{PORT}...")
+            if not online_serials:
+                if unauthorized:
+                    log("[WAIT] Android端末で『USBデバッグを許可しますか？』が表示されています。『許可』をタップしてください。")
+                else:
+                    log("[WAIT] Android端末が見つかりません。USB接続とUSBデバッグを確認してください。")
+                return False
+
+            chosen_serial = online_serials[0]
+            subprocess.run([adb_cmd, "-s", chosen_serial, "forward", "--remove", f"tcp:{PORT}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            fwd = subprocess.run([adb_cmd, "-s", chosen_serial, "forward", f"tcp:{PORT}", f"tcp:{PORT}"], capture_output=True, text=True)
+            return fwd.returncode == 0
+        except Exception:
+            return False
+
+    log(f"Ready. Starting auto-connection loop (target port: {PORT})...")
     log("Note: Ensure Terminal/App has Accessibility permission in System Settings -> Privacy & Security -> Accessibility.")
+    last_fwd_ok = False
 
     while True:
         try:
+            if not ensure_adb_forward():
+                last_fwd_ok = False
+                time.sleep(2)
+                continue
+
+            if not last_fwd_ok:
+                log(f"[OK] ADBポートフォワード確立 (ポート {PORT})。スマホアプリで『PC接続 (USB)』を開いてください。")
+                last_fwd_ok = True
+
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(3.0)
+            s.settimeout(2.0)
             s.connect(("127.0.0.1", PORT))
             
             f = s.makefile("r", encoding="utf-8")
             banner = f.readline()
             if not banner:
                 s.close()
-                log("Waiting for Android app response... (retrying in 2s)")
                 time.sleep(2)
                 continue
 
             s.settimeout(None)
-            log("Connected successfully to Taiko App! Start your game now!")
+            log("==========================================================")
+            log(" ★★★ 太鼓コントローラー (アプリ) と接続完了！ ★★★")
+            log(" PCゲーム（太鼓ウェブ / シミュレータ等）に入力を送信できます！")
+            log("==========================================================")
             
             for line in f:
                 line = line.strip()
-                if not line:
+                if not line or line == "PING":
                     continue
                 parts = line.split(" ")
                 if len(parts) >= 2:
@@ -138,17 +175,15 @@ def main():
                         elif action == "UP":
                             send_up(key_char)
 
-            log("Disconnected by Android app. Reconnecting in 2 seconds...")
+            log("アプリとの接続が切断されました。再接続待機中...")
             s.close()
             time.sleep(2)
         except (socket.timeout, ConnectionRefusedError, OSError):
-            log("Waiting for Android app connection... (retrying in 2s)")
             time.sleep(2)
         except KeyboardInterrupt:
             log("Exiting...")
             break
         except Exception as e:
-            log(f"Error: {e}. Reconnecting in 2 seconds...")
             time.sleep(2)
 
 if __name__ == "__main__":

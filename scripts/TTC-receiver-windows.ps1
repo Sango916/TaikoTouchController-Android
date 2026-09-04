@@ -142,23 +142,86 @@ public class TaikoKeyboard {
 }
 
 Write-Host "=== Taiko Controller Receiver for Windows ===" -ForegroundColor Green
-Write-Host "Setting up ADB port forwarding (tcp:$port)..." -ForegroundColor Cyan
-try { & $adbCmd forward --remove tcp:$port 2>$null } catch {}
+Write-Host "Initializing connection helper..." -ForegroundColor Cyan
 
-$fwdOut = & $adbCmd forward tcp:$port tcp:$port 2>&1
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Notice from ADB: $fwdOut" -ForegroundColor Yellow
-    Write-Host "Ensure Android device is connected via USB and USB debugging is enabled!" -ForegroundColor Yellow
+function Ensure-AdbForward($targetPort) {
+    # Check connected devices
+    $rawDevices = & $adbCmd devices -l 2>&1
+    $onlineSerials = @()
+    $unauthorizedFound = $false
+
+    foreach ($line in $rawDevices) {
+        $trimmed = $line.Trim()
+        if ($trimmed.Length -eq 0 -or $trimmed.StartsWith("List of devices")) { continue }
+        if ($trimmed -match "^([^\s]+)\s+unauthorized") {
+            $unauthorizedFound = $true
+        } elseif ($trimmed -match "^([^\s]+)\s+device") {
+            $onlineSerials += $matches[1]
+        }
+    }
+
+    # If no devices found, attempt auto-connecting to WSA (Windows Subsystem for Android)
+    if ($onlineSerials.Count -eq 0) {
+        foreach ($wsaPort in @(58526, 5555)) {
+            $connOut = & $adbCmd connect "127.0.0.1:$wsaPort" 2>&1
+            if ($connOut -match "connected") {
+                $onlineSerials += "127.0.0.1:$wsaPort"
+                break
+            }
+        }
+    }
+
+    if ($onlineSerials.Count -eq 0) {
+        if ($unauthorizedFound) {
+            Write-Host "[WAIT] Android端末で『USBデバッグを許可しますか？』が表示されています。『常に許可』をタップしてください。" -ForegroundColor Yellow
+        } else {
+            Write-Host "[WAIT] Android端末が見つかりません。USBケーブルでPCに接続し、端末の『USBデバッグ』を有効にしてください。" -ForegroundColor Yellow
+        }
+        return $false
+    }
+
+    # Pick best target serial
+    $chosenSerial = $onlineSerials[0]
+    
+    # Remove existing forward cleanly
+    try { & $adbCmd -s $chosenSerial forward --remove "tcp:$targetPort" 2>$null } catch {}
+
+    # Forward port to chosen device
+    $fwdOut = & $adbCmd -s $chosenSerial forward "tcp:$targetPort" "tcp:$targetPort" 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        return $true
+    } else {
+        Write-Host "[NOTICE] ADB Port Forwarding notice: $fwdOut" -ForegroundColor Yellow
+        return $false
+    }
 }
 
-Write-Host "Connecting to Android Taiko controller on localhost:$port..." -ForegroundColor Cyan
+Write-Host "Ready. Starting auto-connection loop (target port: $port)..." -ForegroundColor Cyan
+
+$hasAnnouncedWaiting = $false
+$lastForwardOk = $false
 
 while ($true) {
     $client = $null
     try {
+        # Check and ensure ADB port forward is active
+        $forwardOk = Ensure-AdbForward -targetPort $port
+        if (!$forwardOk) {
+            $lastForwardOk = $false
+            Start-Sleep -Seconds 2
+            continue
+        }
+
+        if (!$lastForwardOk) {
+            Write-Host "[OK] ADB通信路を確立しました (ポート $port)" -ForegroundColor Green
+            Write-Host "[INFO] スマホアプリ側で『PC接続 (USB / ADB有線)』モードを開いてください..." -ForegroundColor Cyan
+            $lastForwardOk = $true
+        }
+
+        # Attempt TCP connection to Android app via forwarded localhost port
         $client = New-Object System.Net.Sockets.TcpClient
         $connectResult = $client.BeginConnect("127.0.0.1", $port, $null, $null)
-        $success = $connectResult.AsyncWaitHandle.WaitOne(3000, $false)
+        $success = $connectResult.AsyncWaitHandle.WaitOne(2000, $false)
         if (!$success) {
             $client.Close()
             throw "Connection timeout"
@@ -173,23 +236,28 @@ while ($true) {
         $banner = $reader.ReadLine()
         if ($null -eq $banner) {
             $client.Close()
-            Write-Host "Waiting for Android app connection... (retrying in 2 seconds)" -ForegroundColor Yellow
             Start-Sleep -Seconds 2
             continue
         }
 
         $stream.ReadTimeout = -1
-        Write-Host "Connected successfully to Taiko App! Start your game now!" -ForegroundColor Green
+        Write-Host ""
+        Write-Host "==========================================================" -ForegroundColor Green
+        Write-Host " ★★★ 太鼓コントローラー (アプリ) と接続完了！ ★★★" -ForegroundColor Green
+        Write-Host " PCゲーム（太鼓ウェブ / シミュレータ等）に入力を送信できます！" -ForegroundColor Green
+        Write-Host " (アプリ画面の太鼓を叩くと、D/F/J/KキーがPCへ瞬時に送信されます)" -ForegroundColor Cyan
+        Write-Host "==========================================================" -ForegroundColor Green
+        Write-Host ""
         
         while ($client.Connected) {
             $line = $reader.ReadLine()
             if ($null -eq $line) {
-                Write-Host "Disconnected by Android app." -ForegroundColor Yellow
+                Write-Host "アプリとの接続が切断されました。再接続待機中..." -ForegroundColor Yellow
                 break
             }
             
             $line = $line.Trim()
-            if ($line.Length -eq 0) { continue }
+            if ($line.Length -eq 0 -or $line -eq "PING") { continue }
 
             $parts = $line.Split(' ')
             if ($parts.Length -ge 2) {
@@ -210,7 +278,7 @@ while ($true) {
             }
         }
     } catch {
-        Write-Host "Waiting for Android app connection... (retrying in 2 seconds)" -ForegroundColor Yellow
+        # Silent wait or periodic status
     } finally {
         if ($null -ne $client) {
             try { $client.Close() } catch {}
