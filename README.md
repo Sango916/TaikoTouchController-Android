@@ -1,3 +1,7 @@
+<p align="right">
+  <b>日本語</b> | <a href="README.en.md">English</a>
+</p>
+
 # 太鼓タッチコントローラー (Taiko Touch Controller)
 
 Android端末が太鼓コントローラーへ変身！  
