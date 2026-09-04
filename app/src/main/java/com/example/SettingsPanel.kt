@@ -1719,9 +1719,9 @@ if __name__ == "__main__":
                         Text(
                             text = "1. 端末の「USBデバッグ」を有効にしてPCにUSB接続します。\n" +
                                    "2. 下のボタンからGitHub Releasesを開き、お使いのPC環境に合わせたスクリプトをダウンロードします：\n" +
-                                   "   ・Windows用: taiko-controller-windows.ps1\n" +
-                                   "   ・macOS用: taiko-controller-macos.command\n" +
-                                   "   ・Linux用: taiko-controller-linux.sh\n" +
+                                   "   ・Windows用: TTC-receiver-windows.ps1\n" +
+                                   "   ・macOS用: TTC-receiver-macos.command\n" +
+                                   "   ・Linux用: TTC-receiver-linux.sh\n" +
                                    "3. ダウンロードしたスクリプトを実行すると、ADB環境の自動構築・ポート転送・キー入力ツールの準備・接続まで全自動で行われます！\n" +
                                    "   ※ Windows版: スクリプトを右クリックして「PowerShell で実行」を選択します。\n" +
                                    "   ※ macOS / Linux版: 初回実行時にファイルの実行権限（chmod +x）の設定が必要です。\n" +
@@ -1864,9 +1864,9 @@ if __name__ == "__main__":
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 val scriptFileName = when (activeScriptTab) {
-                                    0 -> "taiko-controller-windows.ps1"
-                                    1 -> "taiko-controller-macos.command"
-                                    else -> "taiko-controller-linux.sh"
+                                    0 -> "TTC-receiver-windows.ps1"
+                                    1 -> "TTC-receiver-macos.command"
+                                    else -> "TTC-receiver-linux.sh"
                                 }
                                 Text(
                                     text = "$scriptFileName の内容をコピー",

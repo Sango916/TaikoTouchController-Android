@@ -82,9 +82,9 @@ jobs:
         with:
           files: |
             app/build/outputs/apk/debug/TTC-v*.apk
-            scripts/taiko-controller-windows.ps1
-            scripts/taiko-controller-macos.command
-            scripts/taiko-controller-linux.sh
+            scripts/TTC-receiver-windows.ps1
+            scripts/TTC-receiver-macos.command
+            scripts/TTC-receiver-linux.sh
           name: Release ${{ github.ref_name }}
           draft: false
           prerelease: false

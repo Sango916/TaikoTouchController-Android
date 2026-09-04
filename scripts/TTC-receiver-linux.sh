@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# macOS PC-side Receiver for Taiko Controller
-# File extension to save as: controller.command (or controller.py)
-# Usage: chmod +x controller.command && ./controller.command
+# Linux PC-side Receiver for Taiko Controller
+# File name: TTC-receiver-linux.sh
+# Usage: chmod +x TTC-receiver-linux.sh && ./TTC-receiver-linux.sh
 
 import socket
 import subprocess
@@ -17,33 +17,66 @@ PORT = 60001
 def log(msg):
     print(msg, flush=True)
 
+def ensure_system_package(pkg_name_apt, pkg_name_dnf=None, pkg_name_pacman=None, pkg_name_zypper=None):
+    # Attempt to install a system package using available package manager with sudo prompt
+    if os.path.exists("/usr/bin/apt-get"):
+        log(f"Installing {pkg_name_apt} via apt (administrator password may be requested)...")
+        try:
+            subprocess.run(["sudo", "apt-get", "update"], check=False)
+            subprocess.run(["sudo", "apt-get", "install", "-y", pkg_name_apt], check=True)
+            return True
+        except Exception as e:
+            log(f"apt-get install failed: {e}")
+    elif os.path.exists("/usr/bin/dnf"):
+        pkg = pkg_name_dnf or pkg_name_apt
+        log(f"Installing {pkg} via dnf (administrator password may be requested)...")
+        try:
+            subprocess.run(["sudo", "dnf", "install", "-y", pkg], check=True)
+            return True
+        except Exception as e:
+            log(f"dnf install failed: {e}")
+    elif os.path.exists("/usr/bin/pacman"):
+        pkg = pkg_name_pacman or pkg_name_apt
+        log(f"Installing {pkg} via pacman (administrator password may be requested)...")
+        try:
+            subprocess.run(["sudo", "pacman", "-Sy", "--noconfirm", pkg], check=True)
+            return True
+        except Exception as e:
+            log(f"pacman install failed: {e}")
+    elif os.path.exists("/usr/bin/zypper"):
+        pkg = pkg_name_zypper or pkg_name_apt
+        log(f"Installing {pkg} via zypper (administrator password may be requested)...")
+        try:
+            subprocess.run(["sudo", "zypper", "--non-interactive", "in", pkg], check=True)
+            return True
+        except Exception as e:
+            log(f"zypper install failed: {e}")
+    return False
+
 def main():
-    log("=== Taiko Controller Receiver for macOS ===")
+    log("=== Taiko Controller Receiver for Linux ===")
     
     adb_cmd = "adb"
 
-    # Verify ADB
+    # 1. Verify and setup ADB
     try:
         subprocess.run(["adb", "version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except FileNotFoundError:
         if os.path.exists("./platform-tools/adb"):
             adb_cmd = "./platform-tools/adb"
         else:
-            log("ADB not found in PATH. Checking Homebrew or standalone tools...")
-            installed = False
-            try:
-                # Homebrew does not require sudo
-                log("Trying to install android-platform-tools via Homebrew...")
-                res = subprocess.run(["brew", "install", "android-platform-tools"], check=False)
-                if res.returncode == 0:
-                    installed = True
-                    adb_cmd = "adb"
-            except Exception:
-                pass
-            
-            if not installed:
-                log("Downloading official Android SDK Platform Tools...")
-                url = "https://dl.google.com/android/repository/platform-tools-latest-darwin.zip"
+            log("ADB not found in PATH. Attempting automatic installation...")
+            installed = ensure_system_package(
+                pkg_name_apt="adb",
+                pkg_name_dnf="android-tools",
+                pkg_name_pacman="android-tools",
+                pkg_name_zypper="android-tools"
+            )
+            if installed:
+                adb_cmd = "adb"
+            else:
+                log("Downloading official standalone Android SDK Platform Tools...")
+                url = "https://dl.google.com/android/repository/platform-tools-latest-linux.zip"
                 zip_path = "./platform-tools.zip"
                 try:
                     urllib.request.urlretrieve(url, zip_path)
@@ -56,28 +89,32 @@ def main():
                     log("ADB downloaded and extracted successfully to ./platform-tools/")
                 except Exception as e:
                     log(f"Error downloading platform-tools: {e}")
-                    log("Please install ADB manually.")
+                    log("Please install 'adb' or 'android-tools' via your package manager manually.")
                     return
 
-    # Key simulation libraries
+    # 2. Key simulation library (pynput)
     try:
         from pynput.keyboard import Key, Controller
     except ImportError:
-        log("Installing pynput library for keyboard simulation...")
-        installed = False
-        try:
-            subprocess.run([sys.executable, "-m", "pip", "install", "--user", "pynput"], check=True)
-            installed = True
-        except Exception:
+        log("pynput library not found. Installing system package...")
+        installed = ensure_system_package(
+            pkg_name_apt="python3-pynput",
+            pkg_name_dnf="python3-pynput",
+            pkg_name_pacman="python-pynput",
+            pkg_name_zypper="python3-pynput"
+        )
+        if not installed:
+            log("Trying pip install with --user flag...")
             try:
-                subprocess.run([sys.executable, "-m", "pip", "install", "pynput"], check=True)
-                installed = True
-            except Exception:
-                pass
+                subprocess.run([sys.executable, "-m", "pip", "install", "--user", "pynput"], check=True)
+            except Exception as e:
+                log(f"pip install failed: {e}")
+                log("Please run: sudo apt install python3-pynput (or equivalent for your Linux distribution)")
+                return
         try:
             from pynput.keyboard import Key, Controller
         except ImportError:
-            log("Could not load pynput. Please run: pip3 install --user pynput")
+            log("Could not load pynput. Please restart the terminal or install python3-pynput.")
             return
 
     keyboard = Controller()
@@ -99,10 +136,9 @@ def main():
     fwd_proc = subprocess.run([adb_cmd, "forward", f"tcp:{PORT}", f"tcp:{PORT}"], capture_output=True, text=True)
     if fwd_proc.returncode != 0:
         log(f"ADB forward message: {fwd_proc.stderr.strip() or fwd_proc.stdout.strip()}")
-        log("Ensure your Android device is USB connected with USB debugging enabled.")
+        log("Ensure your Android device is USB connected with USB debugging enabled!")
 
     log(f"Connecting to Android Taiko controller on localhost:{PORT}...")
-    log("Note: Ensure Terminal/App has Accessibility permission in System Settings -> Privacy & Security -> Accessibility.")
 
     while True:
         try:

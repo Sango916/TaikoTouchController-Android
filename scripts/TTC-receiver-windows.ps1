@@ -1,5 +1,5 @@
 # Windows PC-side Receiver for Taiko Controller
-# File extension to save as: controller.ps1
+# File name: TTC-receiver-windows.ps1
 # Usage: Right-click the saved file and select "Run with PowerShell"
 
 $port = 60001
