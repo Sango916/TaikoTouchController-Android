@@ -27,6 +27,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -34,14 +36,15 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInteropFilter
+import androidx.compose.ui.input.pointer.changedToUp
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -302,6 +305,7 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
         // 1. Pad Overlay Window (Full Screen)
         // Initial flag includes FLAG_NOT_TOUCHABLE to allow interaction with background apps
         val padFlags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
 
@@ -353,8 +357,10 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
         }
 
         // 2. Floating Bubble Overlay Window
+        // Use FLAG_NOT_FOCUSABLE and FLAG_NOT_TOUCH_MODAL without FLAG_LAYOUT_NO_LIMITS
+        // to ensure stable WindowManager InputChannel on Freeform/WSA environments.
         val bubbleFlags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
 
         val dm = resources.displayMetrics
         val density = dm.density
@@ -436,6 +442,7 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
         val view = padComposeView ?: return
 
         val baseFlags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
 
         params.flags = if (newTouchState) {
@@ -465,64 +472,66 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
     private fun applyBubbleLayout() {
         val params = bubbleLayoutParams ?: return
         val view = bubbleComposeView ?: return
-        val dm = resources.displayMetrics
-        val density = dm.density
+        view.post {
+            try {
+                val dm = resources.displayMetrics
+                val density = dm.density
 
-        val bubbleSize = (56 * density).toInt()
-        val menuWidth = (220 * density).toInt()
-        val margin = (12 * density).toInt()
+                val bubbleSize = (56 * density).toInt()
+                val menuWidth = (220 * density).toInt()
+                val margin = (12 * density).toInt()
 
-        // Clamp bubble button position so it is always fully on-screen
-        val maxBubbleX = (dm.widthPixels - bubbleSize - margin).toFloat().coerceAtLeast(margin.toFloat())
-        val maxBubbleY = (dm.heightPixels - bubbleSize - margin).toFloat().coerceAtLeast(margin.toFloat())
+                // Clamp bubble button position so it is always fully on-screen
+                val maxBubbleX = (dm.widthPixels - bubbleSize - margin).toFloat().coerceAtLeast(margin.toFloat())
+                val maxBubbleY = (dm.heightPixels - bubbleSize - margin).toFloat().coerceAtLeast(margin.toFloat())
 
-        bubblePosX = bubblePosX.coerceIn(margin.toFloat(), maxBubbleX)
-        bubblePosY = bubblePosY.coerceIn(margin.toFloat(), maxBubbleY)
+                bubblePosX = bubblePosX.coerceIn(margin.toFloat(), maxBubbleX)
+                bubblePosY = bubblePosY.coerceIn(margin.toFloat(), maxBubbleY)
 
-        val isExpanded = isMenuExpandedState.value
-        val isRight = (bubblePosX + bubbleSize / 2f) > (dm.widthPixels / 2f)
-        val isTop = (bubblePosY + bubbleSize / 2f) <= (dm.heightPixels / 2f)
+                val isExpanded = isMenuExpandedState.value
+                val isRight = (bubblePosX + bubbleSize / 2f) > (dm.widthPixels / 2f)
+                val isTop = (bubblePosY + bubbleSize / 2f) <= (dm.heightPixels / 2f)
 
-        isPlacedOnRightState.value = isRight
-        isPlacedOnTopState.value = isTop
+                isPlacedOnRightState.value = isRight
+                isPlacedOnTopState.value = isTop
 
-        if (!isExpanded) {
-            params.width = bubbleSize
-            params.height = bubbleSize
-            params.x = bubblePosX.toInt()
-            params.y = bubblePosY.toInt()
-        } else {
-            params.width = menuWidth
-            params.height = WindowManager.LayoutParams.WRAP_CONTENT
+                if (!isExpanded) {
+                    params.width = bubbleSize
+                    params.height = bubbleSize
+                    params.x = bubblePosX.toInt()
+                    params.y = bubblePosY.toInt()
+                } else {
+                    params.width = menuWidth
+                    params.height = WindowManager.LayoutParams.WRAP_CONTENT
 
-            // Horizontal window position:
-            // If on right side, the bubble is aligned to the right inside the menu window (x = menuWidth - bubbleSize).
-            // To keep the bubble at the exact same screen X (bubblePosX), params.x starts at bubblePosX + bubbleSize - menuWidth.
-            val targetX = if (isRight) {
-                (bubblePosX.toInt() + bubbleSize - menuWidth).coerceIn(margin, (dm.widthPixels - menuWidth - margin).coerceAtLeast(margin))
-            } else {
-                bubblePosX.toInt().coerceIn(margin, (dm.widthPixels - menuWidth - margin).coerceAtLeast(margin))
+                    // Horizontal window position:
+                    // If on right side, the bubble is aligned to the right inside the menu window (x = menuWidth - bubbleSize).
+                    // To keep the bubble at the exact same screen X (bubblePosX), params.x starts at bubblePosX + bubbleSize - menuWidth.
+                    val targetX = if (isRight) {
+                        (bubblePosX.toInt() + bubbleSize - menuWidth).coerceIn(margin, (dm.widthPixels - menuWidth - margin).coerceAtLeast(margin))
+                    } else {
+                        bubblePosX.toInt().coerceIn(margin, (dm.widthPixels - menuWidth - margin).coerceAtLeast(margin))
+                    }
+
+                    // Vertical window position:
+                    // If on top half, menu card is below bubble: window Y starts at bubblePosY.
+                    // If on bottom half, menu card is above bubble: window Y is shifted so the bubble button stays at bubblePosY.
+                    val estimatedMenuHeight = (200 * density).toInt()
+                    val totalHeight = bubbleSize + estimatedMenuHeight + (8 * density).toInt()
+                    val targetY = if (isTop) {
+                        bubblePosY.toInt().coerceIn(margin, (dm.heightPixels - totalHeight - margin).coerceAtLeast(margin))
+                    } else {
+                        (bubblePosY.toInt() + bubbleSize - totalHeight).coerceIn(margin, (dm.heightPixels - totalHeight - margin).coerceAtLeast(margin))
+                    }
+
+                    params.x = targetX.coerceAtLeast(0)
+                    params.y = targetY.coerceAtLeast(0)
+                }
+
+                windowManager?.updateViewLayout(view, params)
+            } catch (e: Exception) {
+                android.util.Log.e("OverlayService", "Failed to update bubble layout", e)
             }
-
-            // Vertical window position:
-            // If on top half, menu card is below bubble: window Y starts at bubblePosY.
-            // If on bottom half, menu card is above bubble: window Y is shifted so the bubble button stays at bubblePosY.
-            val estimatedMenuHeight = (220 * density).toInt()
-            val totalHeight = bubbleSize + estimatedMenuHeight + (8 * density).toInt()
-            val targetY = if (isTop) {
-                bubblePosY.toInt().coerceIn(margin, (dm.heightPixels - totalHeight - margin).coerceAtLeast(margin))
-            } else {
-                (bubblePosY.toInt() + bubbleSize - totalHeight).coerceIn(margin, (dm.heightPixels - totalHeight - margin).coerceAtLeast(margin))
-            }
-
-            params.x = targetX.coerceAtLeast(0)
-            params.y = targetY.coerceAtLeast(0)
-        }
-
-        try {
-            windowManager?.updateViewLayout(view, params)
-        } catch (e: Exception) {
-            android.util.Log.e("OverlayService", "Failed to update bubble layout", e)
         }
     }
 
@@ -608,19 +617,14 @@ fun FloatingBubbleMenu(
         modifier = if (isMenuExpanded) Modifier.width(220.dp) else Modifier.wrapContentSize()
     ) {
         // If bubble is in bottom half (not top), Menu is placed ABOVE the bubble
-        if (!isPlacedOnTop) {
-            AnimatedVisibility(
-                visible = isMenuExpanded,
-                enter = fadeIn() + scaleIn(),
-                exit = fadeOut() + scaleOut()
-            ) {
-                BubbleMenuCard(
-                    isTouchEnabled = isTouchEnabled,
-                    onToggleTouch = onToggleTouch,
-                    onOpenApp = onOpenApp,
-                    onCloseOverlay = onCloseOverlay
-                )
-            }
+        if (!isPlacedOnTop && isMenuExpanded) {
+            BubbleMenuCard(
+                isTouchEnabled = isTouchEnabled,
+                onToggleTouch = onToggleTouch,
+                onOpenApp = onOpenApp,
+                onCloseOverlay = onCloseOverlay,
+                onCloseMenu = onToggleMenu
+            )
         }
 
         // Circular Floating Bubble Trigger
@@ -631,38 +635,24 @@ fun FloatingBubbleMenu(
         )
 
         // If bubble is in top half, Menu is placed BELOW the bubble
-        if (isPlacedOnTop) {
-            AnimatedVisibility(
-                visible = isMenuExpanded,
-                enter = fadeIn() + scaleIn(),
-                exit = fadeOut() + scaleOut()
-            ) {
-                BubbleMenuCard(
-                    isTouchEnabled = isTouchEnabled,
-                    onToggleTouch = onToggleTouch,
-                    onOpenApp = onOpenApp,
-                    onCloseOverlay = onCloseOverlay
-                )
-            }
+        if (isPlacedOnTop && isMenuExpanded) {
+            BubbleMenuCard(
+                isTouchEnabled = isTouchEnabled,
+                onToggleTouch = onToggleTouch,
+                onOpenApp = onOpenApp,
+                onCloseOverlay = onCloseOverlay,
+                onCloseMenu = onToggleMenu
+            )
         }
     }
 }
 
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun BubbleButton(
     isTouchEnabled: Boolean,
     onClick: () -> Unit,
     onDragDelta: (Float, Float) -> Unit
 ) {
-    val context = LocalContext.current
-    val touchSlop = remember { ViewConfiguration.get(context).scaledTouchSlop.toFloat() }
-    var initialRawX by remember { mutableFloatStateOf(0f) }
-    var initialRawY by remember { mutableFloatStateOf(0f) }
-    var lastRawX by remember { mutableFloatStateOf(0f) }
-    var lastRawY by remember { mutableFloatStateOf(0f) }
-    var isDragging by remember { mutableStateOf(false) }
-
     val bubbleColor = if (isTouchEnabled) {
         Brush.radialGradient(listOf(Color(0xFFF97316), Color(0xFFDC2626)))
     } else {
@@ -677,43 +667,34 @@ fun BubbleButton(
             .clip(CircleShape)
             .background(bubbleColor)
             .border(2.dp, if (isTouchEnabled) Color(0xFFFDE68A) else Color(0xFF93C5FD), CircleShape)
-            .pointerInteropFilter { event ->
-                when (event.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> {
-                        initialRawX = event.rawX
-                        initialRawY = event.rawY
-                        lastRawX = event.rawX
-                        lastRawY = event.rawY
-                        isDragging = false
-                        true
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        val totalDx = event.rawX - initialRawX
-                        val totalDy = event.rawY - initialRawY
-                        if (!isDragging && hypot(totalDx.toDouble(), totalDy.toDouble()).toFloat() > touchSlop) {
-                            isDragging = true
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    var isDrag = false
+                    var totalDx = 0f
+                    var totalDy = 0f
+                    val touchSlop = viewConfiguration.touchSlop
+
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        if (change.changedToUp()) {
+                            if (!isDrag) {
+                                onClick()
+                            }
+                            break
                         }
-                        if (isDragging) {
-                            val dx = event.rawX - lastRawX
-                            val dy = event.rawY - lastRawY
-                            lastRawX = event.rawX
-                            lastRawY = event.rawY
-                            onDragDelta(dx, dy)
+                        if (!change.pressed) break
+
+                        val drag = change.positionChange()
+                        totalDx += drag.x
+                        totalDy += drag.y
+                        if (hypot(totalDx.toDouble(), totalDy.toDouble()).toFloat() > touchSlop) {
+                            isDrag = true
+                            change.consume()
+                            onDragDelta(drag.x, drag.y)
                         }
-                        true
                     }
-                    MotionEvent.ACTION_UP -> {
-                        if (!isDragging) {
-                            onClick()
-                        }
-                        isDragging = false
-                        true
-                    }
-                    MotionEvent.ACTION_CANCEL -> {
-                        isDragging = false
-                        true
-                    }
-                    else -> false
                 }
             }
     ) {
@@ -740,7 +721,8 @@ fun BubbleMenuCard(
     isTouchEnabled: Boolean,
     onToggleTouch: () -> Unit,
     onOpenApp: () -> Unit,
-    onCloseOverlay: () -> Unit
+    onCloseOverlay: () -> Unit,
+    onCloseMenu: () -> Unit
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B).copy(alpha = 0.95f)),
@@ -755,7 +737,7 @@ fun BubbleMenuCard(
             modifier = Modifier.padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Header Status
+            // Header Status with close button
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -767,6 +749,17 @@ fun BubbleMenuCard(
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFFFDE68A)
                 )
+                IconButton(
+                    onClick = onCloseMenu,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "メニューを閉じる",
+                        tint = Color.White.copy(alpha = 0.7f),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
 
             Divider(color = Color.White.copy(alpha = 0.15f))
