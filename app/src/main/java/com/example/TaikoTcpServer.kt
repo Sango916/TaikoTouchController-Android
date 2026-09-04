@@ -1,7 +1,9 @@
 package com.example
 
 import android.util.Log
+import java.io.BufferedReader
 import java.io.BufferedWriter
+import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.ServerSocket
 import java.net.Socket
@@ -16,10 +18,12 @@ class TaikoTcpServer(
     private var executor = Executors.newCachedThreadPool()
     private var sendExecutor = Executors.newSingleThreadExecutor()
     @Volatile private var isRunning = false
+    @Volatile private var activePort = 60001
 
     fun start(port: Int = 60001) {
         if (isRunning) return
         isRunning = true
+        activePort = port
         
         if (executor.isShutdown || executor.isTerminated) {
             executor = Executors.newCachedThreadPool()
@@ -74,7 +78,18 @@ class TaikoTcpServer(
             socket.tcpNoDelay = true
             try { socket.trafficClass = 0x10 } catch (_: Exception) {}
             socket.keepAlive = true
+
+            // In USB PC mode, cleanup any prior stale/abandoned connections
+            val priorSockets = clients.keys.toList()
+            for (oldSocket in priorSockets) {
+                if (oldSocket != socket) {
+                    clients.remove(oldSocket)
+                    try { oldSocket.close() } catch (_: Exception) {}
+                }
+            }
+
             val writer = BufferedWriter(OutputStreamWriter(socket.getOutputStream(), "UTF-8"))
+            val reader = BufferedReader(InputStreamReader(socket.getInputStream(), "UTF-8"))
             
             // Send initial OK handshake banner
             synchronized(writer) {
@@ -86,17 +101,33 @@ class TaikoTcpServer(
             onConnectionStatusChanged(clients.size)
 
             Log.d("TaikoTcpServer", "PC Client connected successfully, active clients: ${clients.size}")
-            TaikoLogManager.log("PC Client connected to port 60001 (Client remote port: ${socket.port}) | Active clients: ${clients.size}")
+            TaikoLogManager.log("PC Client connected to port $activePort (Client remote port: ${socket.port}) | Active clients: ${clients.size}")
 
-            // Keep socket active with a periodic heartbeat (PING every 2 seconds).
-            // PC receiver scripts are receive-only (Android -> PC).
-            // Sending a heartbeat reliably monitors socket liveness without relying on incoming socket reads,
-            // preventing premature TCP EOF disconnects on half-duplex socket reads.
+            // Start daemon heartbeat thread: sends PING every 2 seconds to keep connection alive
+            val heartbeatThread = Thread {
+                try {
+                    while (isRunning && !socket.isClosed && clients.containsKey(socket)) {
+                        Thread.sleep(2000)
+                        synchronized(writer) {
+                            writer.write("PING\n")
+                            writer.flush()
+                        }
+                    }
+                } catch (_: Exception) {}
+            }.apply {
+                isDaemon = true
+                name = "TaikoTcp-Heartbeat-${socket.port}"
+                start()
+            }
+
+            // Reader loop blocks on input stream. When client closes connection, readLine() immediately returns null (EOF)
             while (isRunning && !socket.isClosed) {
-                Thread.sleep(2000)
-                synchronized(writer) {
-                    writer.write("PING\n")
-                    writer.flush()
+                val line = reader.readLine() ?: break
+                if (line == "PING") {
+                    synchronized(writer) {
+                        writer.write("PONG\n")
+                        writer.flush()
+                    }
                 }
             }
         } catch (e: Exception) {

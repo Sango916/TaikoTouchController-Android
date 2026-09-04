@@ -292,26 +292,36 @@ function Ensure-AdbForward($targetPort) {
     # Pick best target serial
     $chosenSerial = $onlineSerials[0]
     
-    # Remove existing forward cleanly
-    try { & $adbCmd -s $chosenSerial forward --remove "tcp:$targetPort" 2>$null } catch {}
-
-    # Forward port to chosen device
-    $fwdOut = & $adbCmd -s $chosenSerial forward "tcp:$targetPort" "tcp:$targetPort" 2>&1
-    if ($LASTEXITCODE -eq 0) {
-        return $true
-    } else {
-        Write-Host "[NOTICE] ADB Port Forwarding notice: $fwdOut" -ForegroundColor Yellow
-        return $false
+    # Check if port forward is already active for chosen device and target port
+    $existingFwd = & $adbCmd forward --list 2>&1
+    $isAlreadyForwarded = $false
+    foreach ($fwdLine in $existingFwd) {
+        if ($fwdLine -match [regex]::Escape($chosenSerial) -and $fwdLine -match "tcp:$targetPort\s+tcp:$targetPort") {
+            $isAlreadyForwarded = $true
+            break
+        }
     }
+
+    if (!$isAlreadyForwarded) {
+        try { & $adbCmd -s $chosenSerial forward --remove "tcp:$targetPort" 2>$null } catch {}
+        $fwdOut = & $adbCmd -s $chosenSerial forward "tcp:$targetPort" "tcp:$targetPort" 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "[NOTICE] ADB Port Forwarding notice: $fwdOut" -ForegroundColor Yellow
+            return $false
+        }
+    }
+    return $true
 }
 
 Log-Bi Cyan "Ready. Starting auto-connection loop (target port: $port)..." "5rqW5YKZ5a6M5LqG44CC6Ieq5YuV5o6l57aa44Or44O844OX44KS6ZaL5aeL44GX44G+44GZ"
 
-$hasAnnouncedWaiting = $false
 $lastForwardOk = $false
 
 while ($true) {
     $client = $null
+    $stream = $null
+    $reader = $null
+    $connectedAnnounced = $false
     try {
         # Check and ensure ADB port forward is active
         $forwardOk = Ensure-AdbForward -targetPort $port
@@ -329,47 +339,56 @@ while ($true) {
 
         # Attempt TCP connection to Android app via forwarded localhost port
         $client = New-Object System.Net.Sockets.TcpClient
+        $client.NoDelay = $true
         $connectResult = $client.BeginConnect("127.0.0.1", $port, $null, $null)
-        $success = $connectResult.AsyncWaitHandle.WaitOne(2000, $false)
-        if (!$success) {
+        $connectSuccess = $connectResult.AsyncWaitHandle.WaitOne(4000, $false)
+        if (!$connectSuccess) {
             $client.Close()
-            throw "Connection timeout"
+            Start-Sleep -Seconds 1
+            continue
         }
         $client.EndConnect($connectResult)
 
         $stream = $client.GetStream()
-        $stream.ReadTimeout = 3000
-        $reader = New-Object System.IO.StreamReader($stream)
+        $reader = New-Object System.IO.StreamReader($stream, [System.Text.Encoding]::UTF8)
 
-        # Read banner to verify real app connection
-        $banner = $reader.ReadLine()
-        if ($null -eq $banner) {
-            $client.Close()
-            Start-Sleep -Seconds 2
-            continue
-        }
-
-        $stream.ReadTimeout = -1
-        Write-Host ""
-        Write-Host "==========================================================" -ForegroundColor Green
-        Log-Bi Green " *** Taiko Controller Connected Successfully! ***" "4piF4piF4piFIOWkqum8k+OCs+ODs+ODiOODreODvOODqeODvCAo44Ki44OX44OqKSDjgajmjqXntprlrozkuobvvIEg4piF4piF4piF"
-        Log-Bi Green " Sending keys (D / F / J / K) to PC games in real-time." "UEPjgrLjg7zjg6DvvIjlpKrpvJPjgqbjgqfjg5bnrYnvvInjgbjjgq3jg7zjgpLjg6rjgqLjg6vjgr/jgqTjg6DpgIHkv6HjgZfjgb7jgZnjgII="
-        Write-Host "==========================================================" -ForegroundColor Green
-        Write-Host ""
-        
-        while ($client.Connected) {
+        while ($true) {
             $line = $reader.ReadLine()
             if ($null -eq $line) {
-                Log-Bi Yellow "[INFO] Connection closed by Android app. Waiting to reconnect..." "44Ki44OX44Oq44Go44Gu5o6l57aa44GM5YiH5pat44GV44KM44G+44GX44Gf44CC5YaN5o6l57aa5b6F5qmf5LitLi4u"
-                Reset-AdbServer "Reconnection cleanup"
+                if ($connectedAnnounced) {
+                    Log-Bi Yellow "[INFO] Connection closed by Android app. Waiting to reconnect..." "44Ki44OX44Oq44Go44Gu5o6l57aa44GM5YiH5pat44GV44KM44G+44GX44Gf44CC5YaN5o6l57aa5b6F5qmf5LitLi4u"
+                }
                 break
             }
             
             $line = $line.Trim()
-            if ($line.Length -eq 0 -or $line -eq "PING") { continue }
+            if ($line.Length -eq 0) { continue }
+
+            if ($line -eq "OK" -or $line -eq "PING") {
+                if (!$connectedAnnounced) {
+                    Write-Host ""
+                    Write-Host "==========================================================" -ForegroundColor Green
+                    Log-Bi Green " *** Taiko Controller Connected Successfully! ***" "4piF4piF4piFIOWkqum8k+OCs+ODs+ODiOODreODvOODqeODvCAo44Ki44OX44OqKSDjgajmjqXntprlrozkuobvvIEg4piF4piF4piF"
+                    Log-Bi Green " Sending keys (D / F / J / K) to PC games in real-time." "UEPjgrLjg7zjg6DvvIjlpKrpvJPjgqbjgqfjg5bnrYnvvInjgbjjgq3jg7zjgpLjg6rjgqLjg6vjgr/jgqTjg6DpgIHkv6HjgZfjgb7jgZnjgII="
+                    Write-Host "==========================================================" -ForegroundColor Green
+                    Write-Host ""
+                    $connectedAnnounced = $true
+                }
+                continue
+            }
 
             $parts = $line.Split(' ')
             if ($parts.Length -ge 2) {
+                if (!$connectedAnnounced) {
+                    Write-Host ""
+                    Write-Host "==========================================================" -ForegroundColor Green
+                    Log-Bi Green " *** Taiko Controller Connected Successfully! ***" "4piF4piF4piFIOWkqum8k+OCs+ODs+ODiOODreODvOODqeODvCAo44Ki44OX44OqKSDjgajmjqXntprlrozkuobvvIEg4piF4piF4piF"
+                    Log-Bi Green " Sending keys (D / F / J / K) to PC games in real-time." "UEPjgrLjg7zjg6DvvIjlpKrpvJPjgqbjgqfjg5bnrYnvvInjgbjjgq3jg7zjgpLjg6rjgqLjg6vjgr/jgqTjg6DpgIHkv6HjgZfjgb7jgZnjgII="
+                    Write-Host "==========================================================" -ForegroundColor Green
+                    Write-Host ""
+                    $connectedAnnounced = $true
+                }
+
                 $action = $parts[0]
                 for ($i = 1; $i -lt $parts.Length; $i++) {
                     $key = $parts[$i].ToUpper()
@@ -387,11 +406,14 @@ while ($true) {
             }
         }
     } catch {
-        # Silent wait or periodic status
-    } finally {
-        if ($null -ne $client) {
-            try { $client.Close() } catch {}
+        if ($connectedAnnounced) {
+            $errMsg = $_.Exception.Message
+            Log-Bi Yellow "[INFO] Connection dropped ($errMsg). Reconnecting..." "44K744OD44K344On44Oz44GM5YiH5pat44GV44KM44G+44GX44Gf44CC5YaN5o6l57aa44GX44G+44GZLi4u"
         }
+    } finally {
+        if ($null -ne $reader) { try { $reader.Close() } catch {} }
+        if ($null -ne $stream) { try { $stream.Close() } catch {} }
+        if ($null -ne $client) { try { $client.Close() } catch {} }
     }
-    Start-Sleep -Seconds 2
+    Start-Sleep -Seconds 1
 }
