@@ -141,8 +141,21 @@ public class TaikoKeyboard {
     }
 }
 
-Write-Host "=== Taiko Controller Receiver for Windows ===" -ForegroundColor Green
-Write-Host "Initializing connection helper..." -ForegroundColor Cyan
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
+
+function Log-Bi($color, [string]$en, [string]$jaB64 = "") {
+    Write-Host $en -ForegroundColor $color
+    if ($jaB64 -ne "") {
+        try {
+            $bytes = [System.Convert]::FromBase64String($jaB64)
+            $ja = [System.Text.Encoding]::UTF8.GetString($bytes)
+            Write-Host "  -> $ja" -ForegroundColor $color
+        } catch {}
+    }
+}
+
+Log-Bi Green "=== Taiko Controller Receiver for Windows ===" "5aSq6byT44Kz44Oz44OI44Ot44O844Op44O8IFdpbmRvd3PnlKjlj5fkv6Hjgrnjgq/jg6rjg5fjg4g="
+Log-Bi Cyan "Initializing connection helper..." "5o6l57aa44OY44Or44OR44O844KS5Yid5pyf5YyW5LitLi4u"
 
 function Ensure-AdbForward($targetPort) {
     # Check connected devices
@@ -173,9 +186,12 @@ function Ensure-AdbForward($targetPort) {
 
     if ($onlineSerials.Count -eq 0) {
         if ($unauthorizedFound) {
-            Write-Host "[WAIT] Android端末で『USBデバッグを許可しますか？』が表示されています。『常に許可』をタップしてください。" -ForegroundColor Yellow
+            Log-Bi Yellow "[WAIT] Android device detected, but unauthorized." "QW5kcm9pZOerr+acq+OBjOaknOWHuuOBleOCjOOBvuOBl+OBn+OBjOOAgeacquioseWPr+OBp+OBmeOAgg=="
+            Log-Bi Yellow "       Please unlock phone screen and tap 'Allow USB debugging'." "44K544Oe44Ob55S76Z2i44Gu44Ot44OD44Kv44KS6Kej6Zmk44GX44CB44CMVVNC44OH44OQ44OD44Kw44KS6Kix5Y+v44CN44KS44K/44OD44OX44GX44Gm44GP44Gg44GV44GE44CC"
         } else {
-            Write-Host "[WAIT] Android端末が見つかりません。USBケーブルでPCに接続し、端末の『USBデバッグ』を有効にしてください。" -ForegroundColor Yellow
+            Log-Bi Yellow "[WAIT] No Android device detected." "QW5kcm9pZOerr+acq+OBjOimi+OBpOOBi+OCiuOBvuOBm+OCk+OAgg=="
+            Log-Bi Yellow "       1. Connect phone to PC via USB cable." "MS4g44K544Oe44Ob44KSVVNC44Kx44O844OW44Or44GnUEPjgavmjqXntprjgZfjgabjgY/jgaDjgZXjgYTjgII="
+            Log-Bi Yellow "       2. Enable 'USB debugging' in Developer options." "Mi4g56uv5pyr44Gu6ZaL55m66ICF5ZCR44GR44Kq44OX44K344On44Oz44Gn44CMVVNC44OH44OQ44OD44Kw44CN44KST07jgavjgZfjgabjgY/jgaDjgZXjgYTjgII="
         }
         return $false
     }
@@ -196,7 +212,7 @@ function Ensure-AdbForward($targetPort) {
     }
 }
 
-Write-Host "Ready. Starting auto-connection loop (target port: $port)..." -ForegroundColor Cyan
+Log-Bi Cyan "Ready. Starting auto-connection loop (target port: $port)..." "5rqW5YKZ5a6M5LqG44CC6Ieq5YuV5o6l57aa44Or44O844OX44KS6ZaL5aeL44GX44G+44GZ"
 
 $hasAnnouncedWaiting = $false
 $lastForwardOk = $false
@@ -213,8 +229,8 @@ while ($true) {
         }
 
         if (!$lastForwardOk) {
-            Write-Host "[OK] ADB通信路を確立しました (ポート $port)" -ForegroundColor Green
-            Write-Host "[INFO] スマホアプリ側で『PC接続 (USB / ADB有線)』モードを開いてください..." -ForegroundColor Cyan
+            Log-Bi Green "[OK] ADB port forwarding active (port $port)." "QURC44Od44O844OI44OV44Kp44Ov44O844OJ56K656uLICjjg53jg7zjg4ggJHBvcnQp"
+            Log-Bi Cyan "[INFO] In Android app, select 'PC Connection (USB)' mode..." "44K544Oe44Ob44Ki44OX44Oq44Gn44CMUEPmjqXntpogKFVTQinjgI3jg6Ljg7zjg4njgpLpgbjmip7jgZfjgabjgY/jgaDjgZXjgYQuLi4="
             $lastForwardOk = $true
         }
 
@@ -243,16 +259,15 @@ while ($true) {
         $stream.ReadTimeout = -1
         Write-Host ""
         Write-Host "==========================================================" -ForegroundColor Green
-        Write-Host " ★★★ 太鼓コントローラー (アプリ) と接続完了！ ★★★" -ForegroundColor Green
-        Write-Host " PCゲーム（太鼓ウェブ / シミュレータ等）に入力を送信できます！" -ForegroundColor Green
-        Write-Host " (アプリ画面の太鼓を叩くと、D/F/J/KキーがPCへ瞬時に送信されます)" -ForegroundColor Cyan
+        Log-Bi Green " *** Taiko Controller Connected Successfully! ***" "4piF4piF4piFIOWkqum8k+OCs+ODs+ODiOODreODvOODqeODvCAo44Ki44OX44OqKSDjgajmjqXntprlrozkuobvvIEg4piF4piF4piF"
+        Log-Bi Green " Sending keys (D / F / J / K) to PC games in real-time." "UEPjgrLjg7zjg6DvvIjlpKrpvJPjgqbjgqfjg5bnrYnvvInjgbjjgq3jg7zjgpLjg6rjgqLjg6vjgr/jgqTjg6DpgIHkv6HjgZfjgb7jgZnjgII="
         Write-Host "==========================================================" -ForegroundColor Green
         Write-Host ""
         
         while ($client.Connected) {
             $line = $reader.ReadLine()
             if ($null -eq $line) {
-                Write-Host "アプリとの接続が切断されました。再接続待機中..." -ForegroundColor Yellow
+                Log-Bi Yellow "[INFO] Connection closed by Android app. Waiting to reconnect..." "44Ki44OX44Oq44Go44Gu5o6l57aa44GM5YiH5pat44GV44KM44G+44GX44Gf44CC5YaN5o6l57aa5b6F5qmf5LitLi4u"
                 break
             }
             

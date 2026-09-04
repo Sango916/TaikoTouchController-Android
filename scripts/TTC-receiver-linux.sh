@@ -131,6 +131,11 @@ def main():
         except Exception as e:
             log(f"Key release error: {e}")
 
+    def log_bi(en, ja=None):
+        log(en)
+        if ja:
+            log(f"  -> {ja}")
+
     def ensure_adb_forward():
         try:
             # Check devices
@@ -151,9 +156,9 @@ def main():
 
             if not online_serials:
                 if unauthorized:
-                    log("[WAIT] Android端末で『USBデバッグを許可しますか？』が表示されています。『許可』をタップしてください。")
+                    log_bi("[WAIT] Android device detected, but unauthorized.", "Android端末が検出されましたが、未許可です。画面ロックを解除して「USBデバッグを許可」をタップしてください。")
                 else:
-                    log("[WAIT] Android端末が見つかりません。USB接続とUSBデバッグを確認してください。")
+                    log_bi("[WAIT] No Android device detected.", "Android端末が見つかりません。USBケーブル接続と「USBデバッグ」の有効化を確認してください。")
                 return False
 
             chosen_serial = online_serials[0]
@@ -163,7 +168,7 @@ def main():
         except Exception:
             return False
 
-    log(f"Ready. Starting auto-connection loop (target port: {PORT})...")
+    log_bi(f"Ready. Starting auto-connection loop (target port: {PORT})...", f"準備完了。自動接続ループを開始します (ポート: {PORT})...")
     last_fwd_ok = False
 
     while True:
@@ -174,7 +179,7 @@ def main():
                 continue
 
             if not last_fwd_ok:
-                log(f"[OK] ADBポートフォワード確立 (ポート {PORT})。スマホアプリで『PC接続 (USB)』を開いてください。")
+                log_bi(f"[OK] ADB port forwarding active (port {PORT}).", f"ADBポートフォワード確立 (ポート {PORT})。スマホアプリで「PC接続 (USB)」モードを開いてください。")
                 last_fwd_ok = True
 
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -190,8 +195,8 @@ def main():
 
             s.settimeout(None)
             log("==========================================================")
-            log(" ★★★ 太鼓コントローラー (アプリ) と接続完了！ ★★★")
-            log(" PCゲーム（太鼓ウェブ / シミュレータ等）に入力を送信できます！")
+            log_bi(" *** Taiko Controller Connected Successfully! ***", "★★★ 太鼓コントローラー (アプリ) と接続完了！ ★★★")
+            log_bi(" Sending keys (D / F / J / K) to PC games in real-time.", "PCゲーム（太鼓ウェブ等）へキーをリアルタイム送信します。")
             log("==========================================================")
             
             for line in f:
@@ -211,7 +216,7 @@ def main():
                         elif action == "UP":
                             send_up(key_char)
 
-            log("アプリとの接続が切断されました。再接続待機中...")
+            log_bi("[INFO] Connection closed by Android app. Waiting to reconnect...", "アプリとの接続が切断されました。再接続待機中...")
             s.close()
             time.sleep(2)
         except (socket.timeout, ConnectionRefusedError, OSError):
