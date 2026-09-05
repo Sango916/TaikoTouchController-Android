@@ -45,6 +45,8 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
 import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
@@ -57,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import kotlin.math.hypot
+import kotlinx.coroutines.withTimeout
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.ViewModelStore
@@ -200,6 +203,17 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
         val dContext = if (target != null) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 try {
+                    createWindowContext(target, layoutType, null)
+                } catch (e: Exception) {
+                    try {
+                        val baseDisplayContext = createDisplayContext(target)
+                        baseDisplayContext.createWindowContext(layoutType, null)
+                    } catch (e2: Exception) {
+                        createDisplayContext(target)
+                    }
+                }
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                try {
                     val baseDisplayContext = createDisplayContext(target)
                     baseDisplayContext.createWindowContext(layoutType, null)
                 } catch (e: Exception) {
@@ -219,23 +233,53 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
 
     /**
      * Get the true physical/logical pixel resolution of the target Display object directly.
-     * We MUST NOT use WindowMetrics.bounds or Activity/Service resources because they reflect
-     * the screen where the main Activity is located rather than the overlay's target screen.
+     * We check multiple sources in order of reliability:
+     * 1. padComposeView measured dimensions (if already added and measured by WindowManager)
+     * 2. WindowMetrics from windowManager or displayContext (Android R+)
+     * 3. Display real metrics / mode hardware resolution
      */
     private fun getTargetDisplaySize(): Pair<Int, Int> {
+        // 1. Measured size of padComposeView on the target display
+        padComposeView?.let { pad ->
+            if (pad.width > 0 && pad.height > 0) {
+                val w = maxOf(pad.width, pad.height)
+                val h = minOf(pad.width, pad.height)
+                return Pair(w, h)
+            }
+        }
+
+        // 2. WindowMetrics on API 30+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                val wm = windowManager ?: (displayContext ?: this).getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+                val metrics = wm?.maximumWindowMetrics ?: wm?.currentWindowMetrics
+                if (metrics != null) {
+                    val bounds = metrics.bounds
+                    val bw = bounds.width()
+                    val bh = bounds.height()
+                    if (bw > 0 && bh > 0) {
+                        val w = maxOf(bw, bh)
+                        val h = minOf(bw, bh)
+                        return Pair(w, h)
+                    }
+                }
+            } catch (e: Exception) {
+                // Fallback
+            }
+        }
+
         val d = currentDisplay ?: run {
             val dm = getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
             dm?.getDisplay(targetDisplayId) ?: dm?.displays?.firstOrNull()
         }
 
         if (d != null) {
-            // 1. Direct real metrics of the target display
+            // 3. Direct real metrics of the target display
             val dm = DisplayMetrics()
             try {
                 @Suppress("DEPRECATION")
                 d.getRealMetrics(dm)
                 if (dm.widthPixels > 0 && dm.heightPixels > 0) {
-                    // Thor is a landscape gaming device; ensure width is the larger dimension and height the smaller
                     val w = maxOf(dm.widthPixels, dm.heightPixels)
                     val h = minOf(dm.widthPixels, dm.heightPixels)
                     return Pair(w, h)
@@ -244,7 +288,7 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
                 // Fallback
             }
 
-            // 2. Direct real size of the target display
+            // 4. Direct real size of the target display
             try {
                 val point = android.graphics.Point()
                 @Suppress("DEPRECATION")
@@ -258,7 +302,7 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
                 // Fallback
             }
 
-            // 3. Display mode hardware resolution (accounting for rotation)
+            // 5. Display mode hardware resolution (accounting for rotation)
             try {
                 val mode = d.mode
                 val w = maxOf(mode.physicalWidth, mode.physicalHeight)
@@ -329,7 +373,8 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
         setupOverlays()
         val isSub = newDisplayId != Display.DEFAULT_DISPLAY
         val label = if (isSub) "下画面 (サブ画面)" else "上画面 (メイン画面)"
-        Toast.makeText(this, "太鼓オーバーレイを $label に移動しました", Toast.LENGTH_SHORT).show()
+        val touchStatusText = if (isTouchEnabledState.value) "判定ON (タッチ有効)" else "判定OFF (透過中)"
+        Toast.makeText(this, "太鼓オーバーレイを $label に移動しました\n[$touchStatusText]", Toast.LENGTH_SHORT).show()
     }
 
     private fun updateSettingsInternal(newSettings: ControllerSettings) {
@@ -488,12 +533,12 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
         val targetDensity = getTargetDensity()
 
         // 1. Pad Overlay Window (Full Screen on Target Display)
-        // Uses MATCH_PARENT on the target display's WindowContext to guarantee 100% full-screen coverage
-        // without left-aligning, clipping, or letterboxing regardless of which screen MainActivity was launched on.
+        // Preserve isTouchEnabledState: if touch is currently ON, do NOT add FLAG_NOT_TOUCHABLE!
+        val isTouchOn = isTouchEnabledState.value
         val padFlags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                (if (isTouchOn) 0 else WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE)
 
         padLayoutParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -515,6 +560,19 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
         padComposeView = ComposeView(dContext).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
             setupComposeOwners(this)
+
+            // When pad is measured and laid out on the target display, trigger bubble layout update
+            // to ensure bubble dragging bounds reflect the full physical width and height
+            addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+                val newW = right - left
+                val newH = bottom - top
+                val oldW = oldRight - oldLeft
+                val oldH = oldBottom - oldTop
+                if (newW > 0 && newH > 0 && (newW != oldW || newH != oldH)) {
+                    applyBubbleLayout()
+                }
+            }
+
             setContent {
                 val settings by remember { settingsState }
                 val activeInputs by remember { activeInputsState }
@@ -547,10 +605,11 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
         }
 
         // 2. Floating Bubble Overlay Window
-        // Use FLAG_NOT_FOCUSABLE and FLAG_NOT_TOUCH_MODAL without FLAG_LAYOUT_NO_LIMITS
-        // to ensure stable WindowManager InputChannel on Freeform/WSA environments.
+        // Use FLAG_LAYOUT_NO_LIMITS so bubble can freely drag across the entire physical display
+        // without WindowManager artificially clamping coordinates to the default display boundaries
         val bubbleFlags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
 
         val density = targetDensity
         val bubbleSize = (56 * density).toInt()
@@ -572,6 +631,9 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
             gravity = Gravity.TOP or Gravity.START
             x = bubblePosX.toInt()
             y = bubblePosY.toInt()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
         }
 
         bubbleComposeView = ComposeView(dContext).apply {
@@ -600,7 +662,10 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
                         togglePadTouch()
                     },
                     onSwitchDisplay = {
-                        val otherDisplay = availableDisplayIdsState.find { it != targetDisplayId }
+                        val dm = getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
+                        val activeDisplays = dm?.displays?.map { it.displayId } ?: emptyList()
+                        val otherDisplay = activeDisplays.find { it != targetDisplayId }
+                            ?: availableDisplayIdsState.find { it != targetDisplayId }
                             ?: if (targetDisplayId == Display.DEFAULT_DISPLAY) 1 else Display.DEFAULT_DISPLAY
                         switchDisplay(otherDisplay)
                     },
@@ -612,6 +677,9 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
                     },
                     onDragDelta = { dx, dy ->
                         updateBubblePosition(dx, dy)
+                    },
+                    onVibrate = {
+                        triggerVibration(false)
                     }
                 )
             }
@@ -812,7 +880,8 @@ fun FloatingBubbleMenu(
     onSwitchDisplay: () -> Unit = {},
     onOpenApp: () -> Unit,
     onCloseOverlay: () -> Unit,
-    onDragDelta: (Float, Float) -> Unit
+    onDragDelta: (Float, Float) -> Unit,
+    onVibrate: () -> Unit = {}
 ) {
     val horizontalAlign = if (isPlacedOnRight) Alignment.End else Alignment.Start
 
@@ -839,7 +908,8 @@ fun FloatingBubbleMenu(
         BubbleButton(
             isTouchEnabled = isTouchEnabled,
             onClick = onToggleMenu,
-            onDragDelta = onDragDelta
+            onDragDelta = onDragDelta,
+            onVibrate = onVibrate
         )
 
         // If bubble is in top half, Menu is placed BELOW the bubble
@@ -862,13 +932,17 @@ fun FloatingBubbleMenu(
 fun BubbleButton(
     isTouchEnabled: Boolean,
     onClick: () -> Unit,
-    onDragDelta: (Float, Float) -> Unit
+    onDragDelta: (Float, Float) -> Unit,
+    onVibrate: () -> Unit = {}
 ) {
     val bubbleColor = if (isTouchEnabled) {
         Brush.radialGradient(listOf(Color(0xFFF97316), Color(0xFFDC2626)))
     } else {
         Brush.radialGradient(listOf(Color(0xFF3B82F6), Color(0xFF1E293B)))
     }
+
+    val context = LocalContext.current
+    var lastTapWarningTime by remember { mutableLongStateOf(0L) }
 
     Box(
         contentAlignment = Alignment.Center,
@@ -878,20 +952,64 @@ fun BubbleButton(
             .clip(CircleShape)
             .background(bubbleColor)
             .border(2.dp, if (isTouchEnabled) Color(0xFFFDE68A) else Color(0xFF93C5FD), CircleShape)
-            .pointerInput(Unit) {
+            .pointerInput(isTouchEnabled) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     var isDrag = false
                     var totalDx = 0f
                     var totalDy = 0f
                     val touchSlop = viewConfiguration.touchSlop
+                    val longPressTimeoutMs = viewConfiguration.longPressTimeoutMillis.coerceAtLeast(400L)
+                    var longPressTriggered = false
 
+                    // If touch detection is ON (playing mode):
+                    // Wait for long press timeout to open menu so quick accidental taps don't interrupt gameplay
+                    if (isTouchEnabled) {
+                        try {
+                            withTimeout(longPressTimeoutMs) {
+                                while (true) {
+                                    val event = awaitPointerEvent(PointerEventPass.Main)
+                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                    if (change.changedToUp()) {
+                                        break
+                                    }
+                                    if (!change.pressed) break
+
+                                    val drag = change.positionChange()
+                                    totalDx += drag.x
+                                    totalDy += drag.y
+                                    if (hypot(totalDx.toDouble(), totalDy.toDouble()).toFloat() > touchSlop) {
+                                        isDrag = true
+                                        change.consume()
+                                        onDragDelta(drag.x, drag.y)
+                                        break
+                                    }
+                                }
+                            }
+                        } catch (e: PointerEventTimeoutCancellationException) {
+                            if (!isDrag) {
+                                longPressTriggered = true
+                                onVibrate()
+                                onClick()
+                            }
+                        }
+                    }
+
+                    // Continue handling drag or release
                     while (true) {
-                        val event = awaitPointerEvent()
+                        val event = awaitPointerEvent(PointerEventPass.Main)
                         val change = event.changes.firstOrNull { it.id == down.id } ?: break
                         if (change.changedToUp()) {
-                            if (!isDrag) {
+                            if (!isTouchEnabled && !isDrag) {
+                                // Touch is OFF: Single click immediately opens menu
                                 onClick()
+                            } else if (isTouchEnabled && !isDrag && !longPressTriggered) {
+                                // Touch is ON: Accidental quick tap ignored, show guidance
+                                val now = System.currentTimeMillis()
+                                if (now - lastTapWarningTime > 2500L) {
+                                    lastTapWarningTime = now
+                                    Toast.makeText(context, "判定ON中: メニューを開くには長押ししてください", Toast.LENGTH_SHORT).show()
+                                }
                             }
                             break
                         }
@@ -923,6 +1041,14 @@ fun BubbleButton(
                 fontWeight = FontWeight.Black,
                 color = Color.White
             )
+            if (isTouchEnabled) {
+                Text(
+                    text = "長押し",
+                    fontSize = 7.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFFEF08A)
+                )
+            }
         }
     }
 }
@@ -999,12 +1125,20 @@ fun BubbleMenuCard(
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
-                        text = if (isTouchEnabled) "判定: ON (タップ中)" else "判定: OFF (透過中)",
+                        text = if (isTouchEnabled) "判定: ON (プレイ中)" else "判定: OFF (透過中)",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
                 }
+            }
+            if (isTouchEnabled) {
+                Text(
+                    text = "※ プレイ中の誤動作防止のため、判定ON時はバブル長押しでメニューを開きます",
+                    fontSize = 9.sp,
+                    color = Color(0xFFFDE68A).copy(alpha = 0.9f),
+                    modifier = Modifier.padding(horizontal = 2.dp)
+                )
             }
 
             // 1.5. Multi-screen Switch Button (for AYN Thor dual-screen devices)
