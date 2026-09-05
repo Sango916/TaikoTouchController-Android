@@ -682,6 +682,15 @@ fun TaikoPad(
                     center = Offset(centerX, centerY),
                     style = Stroke(width = 4f)
                 )
+
+                // Center split guide dotted line (clipped strictly within drum surface boundaries)
+                drawLine(
+                    color = if (isDark) Color(0xFF94A3B8).copy(alpha = 0.35f) else Color(0xFF78350F).copy(alpha = 0.25f),
+                    start = Offset(centerX, centerY - visualDrumRadius),
+                    end = Offset(centerX, centerY + visualDrumRadius),
+                    strokeWidth = 3f,
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+                )
             }
         }
 
@@ -739,24 +748,6 @@ fun TaikoPad(
                 }
             }
         }
-
-        // Split Guide dotted line
-        Spacer(
-            modifier = Modifier
-                .fillMaxHeight()
-                .width(1.dp)
-                .align(Alignment.Center)
-                .background(Color.Transparent)
-                .drawBehind {
-                    drawLine(
-                        color = if (isDark) Color(0xFF94A3B8).copy(alpha = 0.3f) else Color(0xFF78350F).copy(alpha = 0.15f),
-                        start = Offset(0f, 0f),
-                        end = Offset(0f, size.height),
-                        strokeWidth = 3f,
-                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
-                    )
-                }
-        )
 
         } // End of inner Box with graphicsLayer
     }

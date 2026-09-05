@@ -12,10 +12,13 @@ import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.Bundle
+import android.hardware.display.DisplayManager
 import android.os.IBinder
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.util.DisplayMetrics
+import android.view.Display
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -81,6 +84,7 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
     companion object {
         const val ACTION_START = "com.example.ACTION_START_OVERLAY"
         const val ACTION_STOP = "com.example.ACTION_STOP_OVERLAY"
+        const val EXTRA_TARGET_DISPLAY_ID = "com.example.EXTRA_TARGET_DISPLAY_ID"
         const val CHANNEL_ID = "taiko_overlay_channel"
         const val NOTIFICATION_ID = 9021
 
@@ -94,9 +98,12 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
             instance?.updateSettingsInternal(newSettings)
         }
 
-        fun start(context: Context) {
+        fun start(context: Context, targetDisplayId: Int? = null) {
             val intent = Intent(context, OverlayService::class.java).apply {
                 action = ACTION_START
+                if (targetDisplayId != null) {
+                    putExtra(EXTRA_TARGET_DISPLAY_ID, targetDisplayId)
+                }
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
@@ -121,6 +128,11 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
     override val lifecycle: Lifecycle get() = lifecycleRegistry
     override val viewModelStore: ViewModelStore get() = store
     override val savedStateRegistry: SavedStateRegistry get() = savedStateRegistryController.savedStateRegistry
+
+    private var targetDisplayId: Int = Display.DEFAULT_DISPLAY
+    private var displayContext: Context? = null
+    private var currentDisplay: Display? = null
+    private val availableDisplayIdsState = mutableStateListOf<Int>()
 
     private var windowManager: WindowManager? = null
     private var padComposeView: ComposeView? = null
@@ -149,7 +161,7 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
         savedStateRegistryController.performRestore(Bundle())
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
 
-        windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        initDisplayContext(Display.DEFAULT_DISPLAY)
         initVibrator()
         try {
             audioPlayer = TaikoAudioPlayer(this)
@@ -158,6 +170,81 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
         }
 
         createNotificationChannel()
+    }
+
+    private fun initDisplayContext(displayId: Int) {
+        targetDisplayId = displayId
+        val displayManager = getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
+        availableDisplayIdsState.clear()
+        if (displayManager != null) {
+            for (d in displayManager.displays) {
+                availableDisplayIdsState.add(d.displayId)
+            }
+        }
+
+        val target = displayManager?.getDisplay(displayId)
+            ?: displayManager?.displays?.firstOrNull { it.displayId == displayId }
+            ?: displayManager?.displays?.firstOrNull()
+
+        currentDisplay = target
+        val dContext = if (target != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
+            createDisplayContext(target)
+        } else {
+            this
+        }
+        displayContext = dContext
+        windowManager = dContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+    }
+
+    /**
+     * Get accurate full screen bounds for the target display without clipping or misaligning.
+     */
+    private fun getTargetDisplaySize(): Pair<Int, Int> {
+        val d = currentDisplay
+        if (d != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                try {
+                    val wm = (displayContext ?: this).getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                    val bounds = wm.currentWindowMetrics.bounds
+                    if (bounds.width() > 0 && bounds.height() > 0) {
+                        return Pair(bounds.width(), bounds.height())
+                    }
+                } catch (e: Exception) {
+                    // Fallback to metrics
+                }
+            }
+            val dm = DisplayMetrics()
+            try {
+                @Suppress("DEPRECATION")
+                d.getRealMetrics(dm)
+                if (dm.widthPixels > 0 && dm.heightPixels > 0) {
+                    return Pair(dm.widthPixels, dm.heightPixels)
+                }
+            } catch (e: Exception) {
+                // Fallback to display metrics
+            }
+        }
+        val resDm = (displayContext ?: this).resources.displayMetrics
+        return Pair(resDm.widthPixels, resDm.heightPixels)
+    }
+
+    /**
+     * Switch overlay display on multi-screen devices (e.g., AYN Thor: Upper ⇔ Lower screen).
+     */
+    fun switchDisplay(newDisplayId: Int) {
+        if (newDisplayId == targetDisplayId && isOverlayRunning) return
+        try {
+            padComposeView?.let { windowManager?.removeViewImmediate(it) }
+            bubbleComposeView?.let { windowManager?.removeViewImmediate(it) }
+        } catch (e: Exception) {
+            android.util.Log.e("OverlayService", "Failed removing views during switch", e)
+        }
+
+        initDisplayContext(newDisplayId)
+        setupOverlays()
+        val isSub = newDisplayId != Display.DEFAULT_DISPLAY
+        val label = if (isSub) "下画面 (サブ画面)" else "上画面 (メイン画面)"
+        Toast.makeText(this, "太鼓オーバーレイを $label に移動しました", Toast.LENGTH_SHORT).show()
     }
 
     private fun updateSettingsInternal(newSettings: ControllerSettings) {
@@ -171,6 +258,13 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
             return START_NOT_STICKY
         }
 
+        val requestedDisplayId = intent?.getIntExtra(EXTRA_TARGET_DISPLAY_ID, Display.DEFAULT_DISPLAY)
+            ?: Display.DEFAULT_DISPLAY
+
+        if (!isOverlayRunning || targetDisplayId != requestedDisplayId) {
+            initDisplayContext(requestedDisplayId)
+        }
+
         startForegroundServiceWithNotification()
         loadSettings()
 
@@ -179,7 +273,9 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
             setupOverlays()
             lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
             lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
-            Toast.makeText(this, "太鼓オーバーレイ起動 (初期状態: 判定OFF)\nバブルメニューから判定をONにできます", Toast.LENGTH_LONG).show()
+            val isSub = targetDisplayId != Display.DEFAULT_DISPLAY
+            val screenLabel = if (isSub) "下画面" else "画面"
+            Toast.makeText(this, "太鼓オーバーレイ起動 ($screenLabel / 初期状態: 判定OFF)\nバブルメニューから判定をONにできます", Toast.LENGTH_LONG).show()
         }
 
         return START_STICKY
@@ -302,7 +398,10 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
             WindowManager.LayoutParams.TYPE_PHONE
         }
 
-        // 1. Pad Overlay Window (Full Screen)
+        val (dispWidth, dispHeight) = getTargetDisplaySize()
+        val dContext = displayContext ?: this
+
+        // 1. Pad Overlay Window (Full Screen on Target Display)
         // Initial flag includes FLAG_NOT_TOUCHABLE to allow interaction with background apps
         val padFlags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
@@ -310,19 +409,21 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
 
         padLayoutParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
+            dispWidth,
+            dispHeight,
             layoutType,
             padFlags,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
+            x = 0
+            y = 0
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
         }
 
-        padComposeView = ComposeView(this).apply {
+        padComposeView = ComposeView(dContext).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
             setupComposeOwners(this)
             setContent {
@@ -362,16 +463,15 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
         val bubbleFlags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
 
-        val dm = resources.displayMetrics
-        val density = dm.density
+        val density = dContext.resources.displayMetrics.density
         val bubbleSize = (56 * density).toInt()
         val margin = (12 * density).toInt()
 
-        bubblePosX = (dm.widthPixels - bubbleSize - margin).toFloat()
-        bubblePosY = (dm.heightPixels * 0.25f)
+        bubblePosX = (dispWidth - bubbleSize - margin).toFloat().coerceAtLeast(margin.toFloat())
+        bubblePosY = (dispHeight * 0.25f).coerceAtLeast(margin.toFloat())
 
-        isPlacedOnRightState.value = bubblePosX > (dm.widthPixels / 2)
-        isPlacedOnTopState.value = bubblePosY <= (dm.heightPixels / 2)
+        isPlacedOnRightState.value = bubblePosX > (dispWidth / 2)
+        isPlacedOnTopState.value = bubblePosY <= (dispHeight / 2)
 
         bubbleLayoutParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -385,7 +485,7 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
             y = bubblePosY.toInt()
         }
 
-        bubbleComposeView = ComposeView(this).apply {
+        bubbleComposeView = ComposeView(dContext).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
             setupComposeOwners(this)
             setContent {
@@ -393,18 +493,27 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
                 val isMenuExpanded by remember { isMenuExpandedState }
                 val isPlacedOnRight by remember { isPlacedOnRightState }
                 val isPlacedOnTop by remember { isPlacedOnTopState }
+                val availableDisplayCount = availableDisplayIdsState.size
+                val isSub = targetDisplayId != Display.DEFAULT_DISPLAY
 
                 FloatingBubbleMenu(
                     isTouchEnabled = isTouchEnabled,
                     isMenuExpanded = isMenuExpanded,
                     isPlacedOnRight = isPlacedOnRight,
                     isPlacedOnTop = isPlacedOnTop,
+                    hasMultipleDisplays = availableDisplayCount > 1,
+                    isSubDisplay = isSub,
                     onToggleMenu = {
                         isMenuExpandedState.value = !isMenuExpandedState.value
                         applyBubbleLayout()
                     },
                     onToggleTouch = {
                         togglePadTouch()
+                    },
+                    onSwitchDisplay = {
+                        val otherDisplay = availableDisplayIdsState.find { it != targetDisplayId }
+                            ?: Display.DEFAULT_DISPLAY
+                        switchDisplay(otherDisplay)
                     },
                     onOpenApp = {
                         openMainApp()
@@ -445,6 +554,15 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
 
+        // Re-enforce accurate target display dimensions and (0,0) offset
+        // to prevent WindowManager from resizing or left-aligning the pad when touchable
+        val (dispWidth, dispHeight) = getTargetDisplaySize()
+        params.width = dispWidth
+        params.height = dispHeight
+        params.x = 0
+        params.y = 0
+        params.gravity = Gravity.TOP or Gravity.START
+
         params.flags = if (newTouchState) {
             baseFlags // Touch enabled (Taiko will receive touch events)
         } else {
@@ -474,7 +592,9 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
         val view = bubbleComposeView ?: return
         view.post {
             try {
-                val dm = resources.displayMetrics
+                val (dispWidth, dispHeight) = getTargetDisplaySize()
+                val dContext = displayContext ?: this
+                val dm = dContext.resources.displayMetrics
                 val density = dm.density
 
                 val bubbleSize = (56 * density).toInt()
@@ -482,15 +602,15 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
                 val margin = (12 * density).toInt()
 
                 // Clamp bubble button position so it is always fully on-screen
-                val maxBubbleX = (dm.widthPixels - bubbleSize - margin).toFloat().coerceAtLeast(margin.toFloat())
-                val maxBubbleY = (dm.heightPixels - bubbleSize - margin).toFloat().coerceAtLeast(margin.toFloat())
+                val maxBubbleX = (dispWidth - bubbleSize - margin).toFloat().coerceAtLeast(margin.toFloat())
+                val maxBubbleY = (dispHeight - bubbleSize - margin).toFloat().coerceAtLeast(margin.toFloat())
 
                 bubblePosX = bubblePosX.coerceIn(margin.toFloat(), maxBubbleX)
                 bubblePosY = bubblePosY.coerceIn(margin.toFloat(), maxBubbleY)
 
                 val isExpanded = isMenuExpandedState.value
-                val isRight = (bubblePosX + bubbleSize / 2f) > (dm.widthPixels / 2f)
-                val isTop = (bubblePosY + bubbleSize / 2f) <= (dm.heightPixels / 2f)
+                val isRight = (bubblePosX + bubbleSize / 2f) > (dispWidth / 2f)
+                val isTop = (bubblePosY + bubbleSize / 2f) <= (dispHeight / 2f)
 
                 isPlacedOnRightState.value = isRight
                 isPlacedOnTopState.value = isTop
@@ -505,23 +625,19 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
                     params.height = WindowManager.LayoutParams.WRAP_CONTENT
 
                     // Horizontal window position:
-                    // If on right side, the bubble is aligned to the right inside the menu window (x = menuWidth - bubbleSize).
-                    // To keep the bubble at the exact same screen X (bubblePosX), params.x starts at bubblePosX + bubbleSize - menuWidth.
                     val targetX = if (isRight) {
-                        (bubblePosX.toInt() + bubbleSize - menuWidth).coerceIn(margin, (dm.widthPixels - menuWidth - margin).coerceAtLeast(margin))
+                        (bubblePosX.toInt() + bubbleSize - menuWidth).coerceIn(margin, (dispWidth - menuWidth - margin).coerceAtLeast(margin))
                     } else {
-                        bubblePosX.toInt().coerceIn(margin, (dm.widthPixels - menuWidth - margin).coerceAtLeast(margin))
+                        bubblePosX.toInt().coerceIn(margin, (dispWidth - menuWidth - margin).coerceAtLeast(margin))
                     }
 
                     // Vertical window position:
-                    // If on top half, menu card is below bubble: window Y starts at bubblePosY.
-                    // If on bottom half, menu card is above bubble: window Y is shifted so the bubble button stays at bubblePosY.
-                    val estimatedMenuHeight = (200 * density).toInt()
+                    val estimatedMenuHeight = (260 * density).toInt()
                     val totalHeight = bubbleSize + estimatedMenuHeight + (8 * density).toInt()
                     val targetY = if (isTop) {
-                        bubblePosY.toInt().coerceIn(margin, (dm.heightPixels - totalHeight - margin).coerceAtLeast(margin))
+                        bubblePosY.toInt().coerceIn(margin, (dispHeight - totalHeight - margin).coerceAtLeast(margin))
                     } else {
-                        (bubblePosY.toInt() + bubbleSize - totalHeight).coerceIn(margin, (dm.heightPixels - totalHeight - margin).coerceAtLeast(margin))
+                        (bubblePosY.toInt() + bubbleSize - totalHeight).coerceIn(margin, (dispHeight - totalHeight - margin).coerceAtLeast(margin))
                     }
 
                     params.x = targetX.coerceAtLeast(0)
@@ -603,8 +719,11 @@ fun FloatingBubbleMenu(
     isMenuExpanded: Boolean,
     isPlacedOnRight: Boolean,
     isPlacedOnTop: Boolean,
+    hasMultipleDisplays: Boolean = false,
+    isSubDisplay: Boolean = false,
     onToggleMenu: () -> Unit,
     onToggleTouch: () -> Unit,
+    onSwitchDisplay: () -> Unit = {},
     onOpenApp: () -> Unit,
     onCloseOverlay: () -> Unit,
     onDragDelta: (Float, Float) -> Unit
@@ -620,7 +739,10 @@ fun FloatingBubbleMenu(
         if (!isPlacedOnTop && isMenuExpanded) {
             BubbleMenuCard(
                 isTouchEnabled = isTouchEnabled,
+                hasMultipleDisplays = hasMultipleDisplays,
+                isSubDisplay = isSubDisplay,
                 onToggleTouch = onToggleTouch,
+                onSwitchDisplay = onSwitchDisplay,
                 onOpenApp = onOpenApp,
                 onCloseOverlay = onCloseOverlay,
                 onCloseMenu = onToggleMenu
@@ -638,7 +760,10 @@ fun FloatingBubbleMenu(
         if (isPlacedOnTop && isMenuExpanded) {
             BubbleMenuCard(
                 isTouchEnabled = isTouchEnabled,
+                hasMultipleDisplays = hasMultipleDisplays,
+                isSubDisplay = isSubDisplay,
                 onToggleTouch = onToggleTouch,
+                onSwitchDisplay = onSwitchDisplay,
                 onOpenApp = onOpenApp,
                 onCloseOverlay = onCloseOverlay,
                 onCloseMenu = onToggleMenu
@@ -719,7 +844,10 @@ fun BubbleButton(
 @Composable
 fun BubbleMenuCard(
     isTouchEnabled: Boolean,
+    hasMultipleDisplays: Boolean = false,
+    isSubDisplay: Boolean = false,
     onToggleTouch: () -> Unit,
+    onSwitchDisplay: () -> Unit = {},
     onOpenApp: () -> Unit,
     onCloseOverlay: () -> Unit,
     onCloseMenu: () -> Unit
@@ -790,6 +918,36 @@ fun BubbleMenuCard(
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
+                }
+            }
+
+            // 1.5. Multi-screen Switch Button (for AYN Thor dual-screen devices)
+            if (hasMultipleDisplays) {
+                OutlinedButton(
+                    onClick = onSwitchDisplay,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFDE68A)),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.6f)),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Layers,
+                            contentDescription = null,
+                            tint = Color(0xFFFDE68A),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = if (isSubDisplay) "🖥️ 上画面 (メイン) へ移動" else "📱 下画面 (サブ) へ移動",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFFDE68A)
+                        )
+                    }
                 }
             }
 

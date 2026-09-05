@@ -295,7 +295,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startOverlayService() {
-        OverlayService.start(this)
+        val currentDisplayId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            display?.displayId ?: window.decorView.display?.displayId ?: android.view.Display.DEFAULT_DISPLAY
+        } else {
+            @Suppress("DEPRECATION")
+            windowManager.defaultDisplay.displayId
+        }
+        OverlayService.start(this, currentDisplayId)
     }
 
     private fun openOverlayPermissionSettings() {
