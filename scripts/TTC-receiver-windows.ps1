@@ -27,36 +27,38 @@ function Add-PathToUserEnvironment($dirToAdd) {
     }
 }
 
-# Check if adb is in PATH
-if (!(Get-Command adb -ErrorAction SilentlyContinue)) {
-    Write-Host "ADB is not in PATH. Checking local platform-tools..." -ForegroundColor Yellow
-    
-    if (Test-Path ".\platform-tools\adb.exe") {
-        $adbCmd = ".\platform-tools\adb.exe"
-        Write-Host "Found local ADB in platform-tools folder." -ForegroundColor Green
+# Ensure ADB is available and check for updates
+function Ensure-And-Update-Adb {
+    $foundAdb = $null
+
+    if (Get-Command adb -ErrorAction SilentlyContinue) {
+        $foundAdb = "adb"
+    } elseif (Test-Path ".\platform-tools\adb.exe") {
+        $foundAdb = ".\platform-tools\adb.exe"
         Add-PathToUserEnvironment ".\platform-tools"
     } else {
-        Write-Host "Trying to install ADB via winget..." -ForegroundColor Cyan
+        Write-Host "ADB is not found in PATH or platform-tools. Checking winget..." -ForegroundColor Yellow
         if (Get-Command winget -ErrorAction SilentlyContinue) {
             try {
                 winget install Google.Adb --silent --accept-source-agreements --accept-package-agreements | Out-Null
                 $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+                if (Get-Command adb -ErrorAction SilentlyContinue) {
+                    $foundAdb = "adb"
+                    Write-Host "ADB installed via winget successfully!" -ForegroundColor Green
+                }
             } catch {}
         }
 
-        if (Get-Command adb -ErrorAction SilentlyContinue) {
-            $adbCmd = "adb"
-            Write-Host "ADB installed via winget successfully!" -ForegroundColor Green
-        } else {
-            Write-Host "winget unavailable or pending. Downloading official Android SDK Platform Tools..." -ForegroundColor Yellow
+        if ($null -eq $foundAdb) {
+            Write-Host "Downloading official Android SDK Platform Tools from Google..." -ForegroundColor Yellow
             $url = "https://dl.google.com/android/repository/platform-tools-latest-windows.zip"
             $output = ".\platform-tools.zip"
             try {
                 Invoke-WebRequest -Uri $url -OutFile $output
                 Expand-Archive -Path $output -DestinationPath "." -Force
-                Remove-Item $output
+                Remove-Item $output -Force -ErrorAction SilentlyContinue
                 if (Test-Path ".\platform-tools\adb.exe") {
-                    $adbCmd = ".\platform-tools\adb.exe"
+                    $foundAdb = ".\platform-tools\adb.exe"
                     Write-Host "ADB downloaded and extracted successfully!" -ForegroundColor Green
                     Add-PathToUserEnvironment ".\platform-tools"
                 } else {
@@ -65,17 +67,87 @@ if (!(Get-Command adb -ErrorAction SilentlyContinue)) {
                     Exit
                 }
             } catch {
-                Write-Host "Error: Could not download ADB. Please install ADB or platform-tools manually." -ForegroundColor Red
+                Write-Host "Error: Could not download ADB. Please check your internet connection." -ForegroundColor Red
                 Pause
                 Exit
             }
         }
     }
-} else {
-    if (Test-Path ".\platform-tools\adb.exe") {
-        Add-PathToUserEnvironment ".\platform-tools"
+
+    # Check for ADB updates and execute update if available
+    Write-Host "[ADB] Checking for ADB updates..." -ForegroundColor Cyan
+    $updateCompleted = $false
+
+    # 1. If winget is available and manages Google.Adb
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        try {
+            $wingetList = winget list --id Google.Adb --exact 2>&1
+            if ($wingetList -match "Google\.Adb") {
+                $wingetUpgrade = winget upgrade --id Google.Adb --exact 2>&1
+                if ($wingetUpgrade -match "Google\.Adb") {
+                    Write-Host "[ADB] Update found via winget. Updating ADB..." -ForegroundColor Yellow
+                    try { & $foundAdb kill-server 2>$null } catch {}
+                    Start-Sleep -Milliseconds 400
+                    winget upgrade --id Google.Adb --exact --silent --accept-source-agreements --accept-package-agreements | Out-Null
+                    Write-Host "[ADB] ADB updated successfully via winget!" -ForegroundColor Green
+                    $foundAdb = "adb"
+                    $updateCompleted = $true
+                } else {
+                    Write-Host "[ADB] ADB is already up to date (winget)." -ForegroundColor Green
+                    $updateCompleted = $true
+                }
+            }
+        } catch {}
     }
+
+    # 2. If using local platform-tools or winget was not used, check Google repository for updates
+    if (!$updateCompleted -and (Test-Path ".\platform-tools\adb.exe")) {
+        try {
+            $url = "https://dl.google.com/android/repository/platform-tools-latest-windows.zip"
+            $etagFile = ".\platform-tools\.etag"
+            $savedEtag = ""
+            if (Test-Path $etagFile) {
+                try { $savedEtag = (Get-Content $etagFile -Raw -ErrorAction SilentlyContinue).Trim() } catch {}
+            }
+
+            # HTTP HEAD to check remote version/etag without downloading full zip
+            $req = [System.Net.HttpWebRequest]::Create($url)
+            $req.Method = "HEAD"
+            $req.Timeout = 4000
+            $resp = $req.GetResponse()
+            $remoteEtag = $resp.Headers["ETag"]
+            $lastModified = $resp.Headers["Last-Modified"]
+            $resp.Close()
+
+            $remoteToken = if ($remoteEtag) { $remoteEtag } else { $lastModified }
+
+            if ($remoteToken -and $savedEtag -ne "" -and $savedEtag -eq $remoteToken) {
+                Write-Host "[ADB] Local platform-tools is already up to date." -ForegroundColor Green
+            } elseif ($remoteToken) {
+                Write-Host "[ADB] New version of Android Platform Tools available. Updating..." -ForegroundColor Yellow
+                try { & $foundAdb kill-server 2>$null } catch {}
+                Start-Sleep -Milliseconds 400
+
+                $updateZip = ".\platform-tools-update.zip"
+                Invoke-WebRequest -Uri $url -OutFile $updateZip
+                Expand-Archive -Path $updateZip -DestinationPath "." -Force
+                Remove-Item $updateZip -Force -ErrorAction SilentlyContinue
+
+                try { Set-Content -Path $etagFile -Value $remoteToken -Force } catch {}
+                Write-Host "[ADB] Platform Tools updated to latest version!" -ForegroundColor Green
+                $foundAdb = ".\platform-tools\adb.exe"
+            }
+        } catch {
+            Write-Host "[ADB] Update check skipped (using current ADB)." -ForegroundColor DarkGray
+        }
+    } elseif (!$updateCompleted) {
+        Write-Host "[ADB] Current ADB is active and ready." -ForegroundColor Green
+    }
+
+    return $foundAdb
 }
+
+$adbCmd = Ensure-And-Update-Adb
 
 # Add C# helper for Win32 low-latency key events with DirectX/DirectInput Hardware ScanCode support
 if (!("TaikoKeyboard" -as [type])) {
@@ -367,7 +439,7 @@ while ($true) {
                     Write-Host ""
                     Write-Host "==========================================================" -ForegroundColor Green
                     Log-Bi Green " *** Taiko Controller Connected Successfully! ***" "4piF4piF4piFIOWkqum8k+OCs+ODs+ODiOODreODvOODqeODvCAo44Ki44OX44OqKSDjgajmjqXntprlrozkuobvvIEg4piF4piF4piF"
-                    Log-Bi Green " Sending keys (D / F / J / K) to PC games in real-time." "UEPjgrLjg7zjg6DvvIjlpKrpvJPjgqbjgqfjg5bnrYnvvInjgbjjgq3jg7zjgpLjg6rjgqLjg6vjgr/jgqTjg6DpgIHkv6HjgZfjgb7jgZnjgII="
+                    Log-Bi Green " Sending keys (D / F / J / K) to PC games in real-time." "UEPjgrLjg7zjg6Djgbjjgq3jg7zjgpLjg6rjgqLjg6vjgr/jgqTjg6DpgIHkv6HjgZfjgb7jgZnjgII="
                     Write-Host "==========================================================" -ForegroundColor Green
                     Write-Host ""
                     $connectedAnnounced = $true
@@ -381,7 +453,7 @@ while ($true) {
                     Write-Host ""
                     Write-Host "==========================================================" -ForegroundColor Green
                     Log-Bi Green " *** Taiko Controller Connected Successfully! ***" "4piF4piF4piFIOWkqum8k+OCs+ODs+ODiOODreODvOODqeODvCAo44Ki44OX44OqKSDjgajmjqXntprlrozkuobvvIEg4piF4piF4piF"
-                    Log-Bi Green " Sending keys (D / F / J / K) to PC games in real-time." "UEPjgrLjg7zjg6DvvIjlpKrpvJPjgqbjgqfjg5bnrYnvvInjgbjjgq3jg7zjgpLjg6rjgqLjg6vjgr/jgqTjg6DpgIHkv6HjgZfjgb7jgZnjgII="
+                    Log-Bi Green " Sending keys (D / F / J / K) to PC games in real-time." "UEPjgrLjg7zjg6Djgbjjgq3jg7zjgpLjg6rjgqLjg6vjgr/jgqTjg6DpgIHkv6HjgZfjgb7jgZnjgII="
                     Write-Host "==========================================================" -ForegroundColor Green
                     Write-Host ""
                     $connectedAnnounced = $true

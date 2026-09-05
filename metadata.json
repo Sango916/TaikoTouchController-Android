@@ -1,6 +1,6 @@
 {
   "name": "太鼓タッチコントローラー",
-  "description": "AYN ThorやAndroid端末用の太鼓の達人エミュレータ用下画面コントローラー。DS風デザインと据え置き版タタコンの左右叩き分け・大音符片手同時押しアシストを搭載し、低遅延WebSocketやWebADB、バイブレーション、高音質WebAudioをサポート。",
+  "description": "Android端末やPC向けリズムゲーム用タッチコントローラー。低遅延なキー入力送信（USB/ADB、Shizuku、Wi-Fi、Bluetooth）に対応し、左右叩き分けや同時押しアシスト、バイブレーションをサポート。",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -22,7 +22,7 @@ def main():
     
     adb_cmd = "adb"
 
-    # Verify ADB
+    # Verify and check ADB updates
     try:
         subprocess.run(["adb", "version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except FileNotFoundError:
@@ -32,7 +32,6 @@ def main():
             log("ADB not found in PATH. Checking Homebrew or standalone tools...")
             installed = False
             try:
-                # Homebrew does not require sudo
                 log("Trying to install android-platform-tools via Homebrew...")
                 res = subprocess.run(["brew", "install", "android-platform-tools"], check=False)
                 if res.returncode == 0:
@@ -58,6 +57,54 @@ def main():
                     log(f"Error downloading platform-tools: {e}")
                     log("Please install ADB manually.")
                     return
+
+    # Check for ADB updates
+    try:
+        log("[ADB] Checking for ADB updates...")
+        if os.path.exists("./platform-tools/adb"):
+            url = "https://dl.google.com/android/repository/platform-tools-latest-darwin.zip"
+            etag_file = "./platform-tools/.etag"
+            saved_etag = ""
+            if os.path.exists(etag_file):
+                try:
+                    with open(etag_file, "r", encoding="utf-8") as f:
+                        saved_etag = f.read().strip()
+                except Exception:
+                    pass
+            req = urllib.request.Request(url, method="HEAD")
+            with urllib.request.urlopen(req, timeout=4) as resp:
+                remote_etag = resp.headers.get("ETag") or resp.headers.get("Last-Modified")
+            if remote_etag and saved_etag and remote_etag == saved_etag:
+                log("[ADB] Local platform-tools is already up to date.")
+            elif remote_etag:
+                log("[ADB] New version available. Updating ADB platform-tools...")
+                subprocess.run([adb_cmd, "kill-server"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                zip_path = "./platform-tools-update.zip"
+                urllib.request.urlretrieve(url, zip_path)
+                with zipfile.ZipFile(zip_path, "r") as zip_ref:
+                    zip_ref.extractall(".")
+                if os.path.exists(zip_path):
+                    os.remove(zip_path)
+                os.chmod("./platform-tools/adb", 0o755)
+                with open(etag_file, "w", encoding="utf-8") as f:
+                    f.write(remote_etag)
+                log("[ADB] Platform-tools updated successfully!")
+                adb_cmd = "./platform-tools/adb"
+        else:
+            try:
+                # If installed via Homebrew, check outdated
+                out = subprocess.run(["brew", "outdated", "android-platform-tools"], capture_output=True, text=True, check=False)
+                if out.returncode == 0 and "android-platform-tools" in out.stdout:
+                    log("[ADB] Updating android-platform-tools via Homebrew...")
+                    subprocess.run([adb_cmd, "kill-server"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    subprocess.run(["brew", "upgrade", "android-platform-tools"], check=False)
+                    log("[ADB] Updated via Homebrew!")
+                else:
+                    log("[ADB] ADB is up to date.")
+            except Exception:
+                log("[ADB] ADB is active and ready.")
+    except Exception:
+        log("[ADB] Update check finished.")
 
     # Key simulation libraries
     try:
@@ -193,7 +240,7 @@ def main():
             s.settimeout(None)
             log("==========================================================")
             log_bi(" *** Taiko Controller Connected Successfully! ***", "★★★ 太鼓コントローラー (アプリ) と接続完了！ ★★★")
-            log_bi(" Sending keys (D / F / J / K) to PC games in real-time.", "PCゲーム（太鼓ウェブ等）へキーをリアルタイム送信します。")
+            log_bi(" Sending keys (D / F / J / K) to PC games in real-time.", "PCゲームへキーをリアルタイム送信します。")
             log("==========================================================")
             
             for line in f:
