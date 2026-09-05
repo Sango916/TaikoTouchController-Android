@@ -235,7 +235,10 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
                 @Suppress("DEPRECATION")
                 d.getRealMetrics(dm)
                 if (dm.widthPixels > 0 && dm.heightPixels > 0) {
-                    return Pair(dm.widthPixels, dm.heightPixels)
+                    // Thor is a landscape gaming device; ensure width is the larger dimension and height the smaller
+                    val w = maxOf(dm.widthPixels, dm.heightPixels)
+                    val h = minOf(dm.widthPixels, dm.heightPixels)
+                    return Pair(w, h)
                 }
             } catch (e: Exception) {
                 // Fallback
@@ -247,7 +250,9 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
                 @Suppress("DEPRECATION")
                 d.getRealSize(point)
                 if (point.x > 0 && point.y > 0) {
-                    return Pair(point.x, point.y)
+                    val w = maxOf(point.x, point.y)
+                    val h = minOf(point.x, point.y)
+                    return Pair(w, h)
                 }
             } catch (e: Exception) {
                 // Fallback
@@ -256,10 +261,8 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
             // 3. Display mode hardware resolution (accounting for rotation)
             try {
                 val mode = d.mode
-                val rotation = d.rotation
-                val isLandscape = rotation == android.view.Surface.ROTATION_90 || rotation == android.view.Surface.ROTATION_270
-                val w = if (isLandscape) maxOf(mode.physicalWidth, mode.physicalHeight) else minOf(mode.physicalWidth, mode.physicalHeight)
-                val h = if (isLandscape) minOf(mode.physicalWidth, mode.physicalHeight) else maxOf(mode.physicalWidth, mode.physicalHeight)
+                val w = maxOf(mode.physicalWidth, mode.physicalHeight)
+                val h = minOf(mode.physicalWidth, mode.physicalHeight)
                 if (w > 0 && h > 0) {
                     return Pair(w, h)
                 }
@@ -269,7 +272,9 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
         }
 
         val resDm = (displayContext ?: this).resources.displayMetrics
-        return Pair(resDm.widthPixels, resDm.heightPixels)
+        val w = maxOf(resDm.widthPixels, resDm.heightPixels)
+        val h = minOf(resDm.widthPixels, resDm.heightPixels)
+        return Pair(w, h)
     }
 
     /**
@@ -295,6 +300,7 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
      */
     fun switchDisplay(newDisplayId: Int) {
         if (newDisplayId == targetDisplayId && isOverlayRunning) return
+        MainActivity.instance?.resetAllInputs()
         try {
             padComposeView?.let { windowManager?.removeViewImmediate(it) }
         } catch (e: Exception) {
@@ -482,24 +488,25 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
         val targetDensity = getTargetDensity()
 
         // 1. Pad Overlay Window (Full Screen on Target Display)
-        // Initial flag includes FLAG_NOT_TOUCHABLE to allow interaction with background apps
+        // Uses MATCH_PARENT on the target display's WindowContext to guarantee 100% full-screen coverage
+        // without left-aligning, clipping, or letterboxing regardless of which screen MainActivity was launched on.
         val padFlags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
 
         padLayoutParams = WindowManager.LayoutParams(
-            dispWidth,
-            dispHeight,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
             layoutType,
             padFlags,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.TOP or Gravity.START
+            gravity = Gravity.FILL
             x = 0
             y = 0
-            width = dispWidth
-            height = dispHeight
+            width = WindowManager.LayoutParams.MATCH_PARENT
+            height = WindowManager.LayoutParams.MATCH_PARENT
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
@@ -515,14 +522,8 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
                 // Constant overlay transparency regardless of touch enabled/disabled state
                 val currentAlpha = (settings.overlayAlphaPercent / 100f).coerceIn(0.1f, 1.0f)
 
-                // Explicitly provide target display size in DP to guarantee correct scale and centering
-                // regardless of where the main application activity is currently located
-                val densityScope = androidx.compose.ui.unit.Density(targetDensity)
-                val widthDp = with(densityScope) { dispWidth.toDp() }
-                val heightDp = with(densityScope) { dispHeight.toDp() }
-
                 Box(
-                    modifier = Modifier.size(widthDp, heightDp),
+                    modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
                     TaikoPad(
@@ -600,7 +601,7 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
                     },
                     onSwitchDisplay = {
                         val otherDisplay = availableDisplayIdsState.find { it != targetDisplayId }
-                            ?: Display.DEFAULT_DISPLAY
+                            ?: if (targetDisplayId == Display.DEFAULT_DISPLAY) 1 else Display.DEFAULT_DISPLAY
                         switchDisplay(otherDisplay)
                     },
                     onOpenApp = {
@@ -642,18 +643,16 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
 
-        // Re-enforce accurate target display dimensions and (0,0) offset
-        // to prevent WindowManager from resizing or left-aligning the pad when touchable
-        val (dispWidth, dispHeight) = getTargetDisplaySize()
-        params.width = dispWidth
-        params.height = dispHeight
+        params.width = WindowManager.LayoutParams.MATCH_PARENT
+        params.height = WindowManager.LayoutParams.MATCH_PARENT
         params.x = 0
         params.y = 0
-        params.gravity = Gravity.TOP or Gravity.START
+        params.gravity = Gravity.FILL
 
         params.flags = if (newTouchState) {
             baseFlags // Touch enabled (Taiko will receive touch events)
         } else {
+            MainActivity.instance?.resetAllInputs()
             baseFlags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE // Touch disabled (Passed through to underlying apps)
         }
 
@@ -773,6 +772,7 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
             instance = null
         }
         isOverlayRunning = false
+        MainActivity.instance?.resetAllInputs()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)

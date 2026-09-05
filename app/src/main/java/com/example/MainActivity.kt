@@ -101,6 +101,12 @@ class MainActivity : ComponentActivity() {
     // Active release jobs to prevent early releases on fast multi-tap overlaps
     private val pendingReleaseJobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
 
+    // App-level persistent coroutine scope for input dispatches (continues even when Activity is backgrounded/stopped)
+    private val appScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    // Safety Auto-Release Watchdog jobs to enforce auto-release and prevent stuck keys/infinite repeat
+    private val safetyAutoReleaseJobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
+
     // Track physically held parts on this device to prevent race conditions during rapid rolling
     private val physicallyHeldParts = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
@@ -1475,6 +1481,8 @@ class MainActivity : ComponentActivity() {
                 pendingJob.cancel()
                 pendingReleaseJobs.remove(part)
             }
+            safetyAutoReleaseJobs[part]?.cancel()
+            safetyAutoReleaseJobs.remove(part)
 
             val wasPhysicallyHeld = physicallyHeldParts.contains(part)
             if (wasPhysicallyHeld || pendingJob != null) {
@@ -1491,13 +1499,29 @@ class MainActivity : ComponentActivity() {
                 dispatchPhysicalKey(part, keyChar, true, fromTouch)
             }
             physicallyHeldParts.add(part)
+
+            // Safety Auto-Release Watchdog:
+            // If fromTouch is true and Turbo is not enabled, ensure key is never stuck in DOWN state
+            // even if ACTION_UP is dropped or delayed by system/WindowManager context switching.
+            if (fromTouch && !settings.isTurboEnabled) {
+                val maxAllowedHoldMs = maxOf(settings.minPressDurationMs.toLong() + 35L, 85L)
+                safetyAutoReleaseJobs[part] = appScope.launch {
+                    delay(maxAllowedHoldMs)
+                    if (physicallyHeldParts.contains(part)) {
+                        TaikoLogManager.log("Safety Auto-Release Watchdog triggered for $part (exceeded ${maxAllowedHoldMs}ms)")
+                        dispatchPhysicalKey(part, keyChar, false, fromTouch)
+                        physicallyHeldParts.remove(part)
+                        updateActiveInputsState(part, false)
+                    }
+                }
+            }
             
             // Handle repeat logic: Only repeat rapidly when Turbo (Auto-Repeat) is explicitly enabled.
             if (settings.isTurboEnabled) {
                 if (settings.showLogConsole) {
                     TaikoLogManager.log("Turbo Enabled: auto-repeating $part every ${settings.turboIntervalMs}ms")
                 }
-                activeRepeatJobs[part] = lifecycleScope.launch(Dispatchers.IO) {
+                activeRepeatJobs[part] = appScope.launch {
                     val interval = settings.turboIntervalMs.toLong()
                     while (isActive) {
                         delay(interval)
@@ -1508,6 +1532,8 @@ class MainActivity : ComponentActivity() {
                 }
             }
         } else {
+            safetyAutoReleaseJobs[part]?.cancel()
+            safetyAutoReleaseJobs.remove(part)
             activeRepeatJobs[part]?.cancel()
             activeRepeatJobs.remove(part)
             
@@ -1522,7 +1548,7 @@ class MainActivity : ComponentActivity() {
                 if (settings.showLogConsole) {
                     TaikoLogManager.log("Touch Up Hold: $part hold was ${elapsed}ms < minPress ${minDuration}ms. Delaying release by ${delayMs}ms to ensure registration.")
                 }
-                val job = lifecycleScope.launch(Dispatchers.IO) {
+                val job = appScope.launch {
                     delay(delayMs)
                     dispatchPhysicalKey(part, keyChar, false, fromTouch)
                     physicallyHeldParts.remove(part)
@@ -1562,10 +1588,25 @@ class MainActivity : ComponentActivity() {
                         activeRepeatJobs.remove(part)
                         pendingReleaseJobs[part]?.cancel()
                         pendingReleaseJobs.remove(part)
+                        safetyAutoReleaseJobs[part]?.cancel()
+                        safetyAutoReleaseJobs.remove(part)
                         physicallyHeldParts.add(part)
+
+                        if (fromTouch && !settings.isTurboEnabled) {
+                            val maxAllowedHoldMs = maxOf(settings.minPressDurationMs.toLong() + 35L, 85L)
+                            safetyAutoReleaseJobs[part] = appScope.launch {
+                                delay(maxAllowedHoldMs)
+                                if (physicallyHeldParts.contains(part)) {
+                                    TaikoLogManager.log("Safety Auto-Release Watchdog triggered for batch $part")
+                                    triggerInput(part, false, fromTouch)
+                                }
+                            }
+                        }
                     }
                 } else {
                     parts.forEach { part ->
+                        safetyAutoReleaseJobs[part]?.cancel()
+                        safetyAutoReleaseJobs.remove(part)
                         activeRepeatJobs[part]?.cancel()
                         activeRepeatJobs.remove(part)
                         physicallyHeldParts.remove(part)
@@ -1650,6 +1691,8 @@ class MainActivity : ComponentActivity() {
     }
 
     fun resetAllInputs() {
+        safetyAutoReleaseJobs.values.forEach { it.cancel() }
+        safetyAutoReleaseJobs.clear()
         activeRepeatJobs.values.forEach { it.cancel() }
         activeRepeatJobs.clear()
         pendingReleaseJobs.values.forEach { it.cancel() }
@@ -1833,6 +1876,9 @@ class MainActivity : ComponentActivity() {
             Shizuku.removeRequestPermissionResultListener(shizukuListener)
         } catch (e: Exception) {}
         TaikoUsbDirectManager.stop(this)
+        safetyAutoReleaseJobs.values.forEach { it.cancel() }
+        safetyAutoReleaseJobs.clear()
+        appScope.cancel()
         activeRepeatJobs.values.forEach { it.cancel() }
         activeRepeatJobs.clear()
         audioPlayer?.release()
