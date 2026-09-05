@@ -217,11 +217,11 @@ function Ensure-AdbForward($targetPort) {
     if ($onlineSerials.Count -eq 0) {
         $wsaRunning = Get-Process -Name "WsaClient","WsaService","vmmemWSA" -ErrorAction SilentlyContinue
 
-        # Candidate ports: 58526 (standard WSA), 5555 (default ADB), dynamic ports 58520..58535
-        $candidateWsaPorts = @(58526, 5555, 58525, 58527, 58528, 58529, 58530)
+        # Standard WSA ports: 58526 (standard), 5555 (default ADB)
+        $candidateWsaPorts = @(58526, 5555)
         try {
-            $listeners = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
-                Where-Object { ($_.LocalPort -ge 58520 -and $_.LocalPort -le 58535) -or $_.LocalPort -eq 5555 } |
+            $listeners = Get-NetTCPConnection -State Listen -LocalAddress "127.0.0.1" -ErrorAction SilentlyContinue |
+                Where-Object { ($_.LocalPort -ge 58520 -and $_.LocalPort -le 58535) } |
                 Select-Object -ExpandProperty LocalPort -Unique
             foreach ($p in $listeners) {
                 if ($candidateWsaPorts -notcontains $p) {
@@ -230,24 +230,23 @@ function Ensure-AdbForward($targetPort) {
             }
         } catch {}
 
-        # Candidate IPs: 127.0.0.1, plus any Hyper-V/WSA/WSL adapter subnets
-        $candidateIps = @("127.0.0.1")
-        try {
-            $wsaAdapters = Get-NetIPAddress -InterfaceAlias "*WSA*","*WSL*","*vEthernet*" -ErrorAction SilentlyContinue |
-                Where-Object { $_.AddressFamily -eq "IPv4" }
-            foreach ($adap in $wsaAdapters) {
-                $parts = $adap.IPAddress.Split('.')
-                if ($parts.Length -eq 4) {
-                    $wsaSubnetIp = "$($parts[0]).$($parts[1]).$($parts[2]).2"
-                    if ($candidateIps -notcontains $wsaSubnetIp) { $candidateIps += $wsaSubnetIp }
-                }
-            }
-        } catch {}
-
+        # Fast TCP pre-check (80ms): only call 'adb connect' if the port is actually open
+        # This completely avoids blocking for 5-10 seconds per port!
         $wsaConnected = $false
-        foreach ($ip in $candidateIps) {
-            foreach ($wsaPort in $candidateWsaPorts) {
-                $targetEndpoint = "$ip`:$wsaPort"
+        foreach ($wsaPort in $candidateWsaPorts) {
+            $isOpen = $false
+            try {
+                $tcpTest = New-Object System.Net.Sockets.TcpClient
+                $iar = $tcpTest.BeginConnect("127.0.0.1", $wsaPort, $null, $null)
+                if ($iar.AsyncWaitHandle.WaitOne(80, $false)) {
+                    $tcpTest.EndConnect($iar)
+                    $isOpen = $true
+                }
+                $tcpTest.Close()
+            } catch {}
+
+            if ($isOpen) {
+                $targetEndpoint = "127.0.0.1:$wsaPort"
                 $connOut = & $adbCmd connect $targetEndpoint 2>&1
                 if ($connOut -match "connected to" -and $connOut -notmatch "cannot connect" -and $connOut -notmatch "failed") {
                     $onlineSerials += $targetEndpoint
@@ -256,7 +255,6 @@ function Ensure-AdbForward($targetPort) {
                     break
                 }
             }
-            if ($wsaConnected) { break }
         }
 
         if (!$wsaConnected -and $null -ne $wsaRunning -and $wsaRunning.Count -gt 0) {
@@ -393,14 +391,16 @@ while ($true) {
                 for ($i = 1; $i -lt $parts.Length; $i++) {
                     $key = $parts[$i].ToUpper()
                     if ($key.Length -gt 0) {
-                        Write-Host "[KEY] $action -> $key" -ForegroundColor Cyan
                         $vkey = [byte][char]$key[0]
                         
+                        # Instant injection first for sub-millisecond game response
                         if ($action -eq "DOWN") {
                             [TaikoKeyboard]::Down($vkey)
                         } elseif ($action -eq "UP") {
                             [TaikoKeyboard]::Up($vkey)
                         }
+
+                        Write-Host "[KEY] $action -> $key" -ForegroundColor Cyan
                     }
                 }
             }
@@ -411,6 +411,7 @@ while ($true) {
             Log-Bi Yellow "[INFO] Connection dropped ($errMsg). Reconnecting..." "44K744OD44K344On44Oz44GM5YiH5pat44GV44KM44G+44GX44Gf44CC5YaN5o6l57aa44GX44G+44GZLi4u"
         }
     } finally {
+        $lastForwardOk = $false
         if ($null -ne $reader) { try { $reader.Close() } catch {} }
         if ($null -ne $stream) { try { $stream.Close() } catch {} }
         if ($null -ne $client) { try { $client.Close() } catch {} }

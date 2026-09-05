@@ -1812,9 +1812,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
-        if (!OverlayService.isOverlayRunning) {
-            stopTcpServer()
-        }
+        // Keep tcpServer alive while activity is in background/unfocused so that PC games receive inputs in USB mode.
+        // tcpServer is stopped cleanly in onDestroy() or when connectionMode is changed.
     }
 
     override fun onDestroy() {

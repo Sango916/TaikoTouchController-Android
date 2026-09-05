@@ -27,9 +27,8 @@ class AdbWirelessClient {
     private val activePressedScancodes = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
     private val activePressedKeycodes = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
 
-    private var isRootAvailable: Boolean? = null
-    private var rootProcess: Process? = null
-    private var rootOutputStream: DataOutputStream? = null
+    private var uinputProcess: Process? = null
+    private var uinputOutputStream: DataOutputStream? = null
     var isUinputRegistered = false
         private set
 
@@ -49,7 +48,7 @@ class AdbWirelessClient {
             if (isUinputRegistered) {
                 // Re-register to change device type
                 inputExecutor.execute {
-                    cleanupRootProcess()
+                    cleanupUinputProcess()
                     checkAndRegisterUinput()
                 }
             }
@@ -64,7 +63,7 @@ class AdbWirelessClient {
             injectionMethod = method
             if (isUinputRegistered) {
                 inputExecutor.execute {
-                    cleanupRootProcess()
+                    cleanupUinputProcess()
                 }
             }
         }
@@ -79,27 +78,9 @@ class AdbWirelessClient {
     fun isUinputActive(): Boolean = isUinputRegistered
 
     init {
-        // Pre-check root on a background thread
+        // Log available input devices on a background thread (No root/su check)
         networkExecutor.execute {
-            checkRoot()
             logInputDevices()
-        }
-    }
-
-    private fun checkRoot(): Boolean {
-        if (isRootAvailable != null) return isRootAvailable!!
-        return try {
-            val p = Runtime.getRuntime().exec("su")
-            val os = DataOutputStream(p.outputStream)
-            os.writeBytes("exit\n")
-            os.flush()
-            val exitVal = p.waitFor()
-            isRootAvailable = (exitVal == 0)
-            Log.d("AdbWireless", "Root access availability check: $isRootAvailable")
-            isRootAvailable!!
-        } catch (e: Exception) {
-            isRootAvailable = false
-            false
         }
     }
 
@@ -128,12 +109,12 @@ class AdbWirelessClient {
      */
     private fun checkAndRegisterUinput(): Boolean {
         val isAlive = try {
-            rootProcess?.isAlive ?: false
+            uinputProcess?.isAlive ?: false
         } catch (e: Exception) {
             false
         }
 
-        if (isUinputRegistered && rootOutputStream != null && isAlive) return true
+        if (isUinputRegistered && uinputOutputStream != null && isAlive) return true
 
         // Rate limit registration attempts if we failed too many times to avoid ANR warnings
         val now = System.currentTimeMillis()
@@ -143,12 +124,12 @@ class AdbWirelessClient {
 
         lastUinputAttemptTime = now
         try {
-            cleanupRootProcess()
+            cleanupUinputProcess()
 
             var p: Process? = null
             var os: DataOutputStream? = null
 
-            // 1. Try Shizuku first if authorized
+            // 1. Try Shizuku if authorized
             val isShizukuAvailable = try {
                 Shizuku.pingBinder() && 
                 Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -219,77 +200,15 @@ class AdbWirelessClient {
                 }
             }
 
-            // 2. Try Root fallback if Shizuku failed or was not authorized
-            if (p == null && checkRoot()) {
-                // Try Root Plan A: /system/bin/uinput
-                try {
-                    Log.d("AdbWireless", "Starting uinput via Root su '/system/bin/uinput -'")
-                    TaikoLogManager.log("uinput: Root trying '/system/bin/uinput -'")
-                    val proc = Runtime.getRuntime().exec(arrayOf("su", "-c", "/system/bin/uinput -"))
-                    val out = DataOutputStream(proc.outputStream)
-                    setupProcessLogging(proc)
-                    
-                    val registerJson = getRegistrationJson()
-                    out.write(("[\n" + registerJson + "\n").toByteArray(Charsets.UTF_8))
-                    out.flush()
-                    
-                    Thread.sleep(150)
-                    if (proc.isAlive) {
-                        p = proc
-                        os = out
-                        TaikoLogManager.log("uinput: Root '/system/bin/uinput' registered successfully")
-                    } else {
-                        val exitCode = try { proc.exitValue() } catch (e: Exception) { -1 }
-                        Log.w("AdbWireless", "Root '/system/bin/uinput' exited with $exitCode")
-                        TaikoLogManager.log("uinput: Root '/system/bin/uinput' failed (exit: $exitCode). trying fallback 'cmd uinput'...")
-                        try { out.close() } catch (e: Exception) {}
-                        try { proc.destroy() } catch (e: Exception) {}
-                    }
-                } catch (e: Exception) {
-                    Log.e("AdbWireless", "Root plan A exception", e)
-                }
-
-                // Try Root Plan B (Fallback): cmd uinput
-                if (p == null) {
-                    try {
-                        Log.d("AdbWireless", "Starting uinput via Root su 'cmd uinput -'")
-                        TaikoLogManager.log("uinput: Root trying 'cmd uinput -'")
-                        val proc = Runtime.getRuntime().exec(arrayOf("su", "-c", "cmd uinput -"))
-                        val out = DataOutputStream(proc.outputStream)
-                        setupProcessLogging(proc)
-                        
-                        val registerJson = getRegistrationJson()
-                        out.write(("[\n" + registerJson + "\n").toByteArray(Charsets.UTF_8))
-                        out.flush()
-                        
-                        Thread.sleep(150)
-                        if (proc.isAlive) {
-                            p = proc
-                            os = out
-                            TaikoLogManager.log("uinput: Root 'cmd uinput' registered successfully")
-                        } else {
-                            val exitCode = try { proc.exitValue() } catch (e: Exception) { -1 }
-                            Log.w("AdbWireless", "Root 'cmd uinput' exited with $exitCode")
-                            TaikoLogManager.log("uinput ERR: Root uinput failed (exit: $exitCode)")
-                            try { out.close() } catch (e: Exception) {}
-                            try { proc.destroy() } catch (e: Exception) {}
-                        }
-                    } catch (e: Exception) {
-                        Log.e("AdbWireless", "Root plan B exception", e)
-                        TaikoLogManager.log("uinput ERR: Root startup error: ${e.message}")
-                    }
-                }
-            }
-
             if (p != null && os != null) {
-                rootProcess = p
-                rootOutputStream = os
+                uinputProcess = p
+                uinputOutputStream = os
                 isUinputRegistered = true
                 uinputRegisterFailCount = 0
                 Log.d("AdbWireless", "Virtual uinput device ($emulationMode) registered successfully!")
                 return true
             } else {
-                Log.d("AdbWireless", "Neither Shizuku nor Root could successfully register uinput")
+                Log.d("AdbWireless", "Shizuku is not running or could not register uinput")
                 uinputRegisterFailCount++
                 return false
             }
@@ -358,9 +277,6 @@ class AdbWirelessClient {
                 if (isShizukuAvailable) {
                     Log.d("AdbWireless", "Starting persistent shell via Shizuku")
                     createShizukuProcess(arrayOf("sh"))
-                } else if (checkRoot()) {
-                    Log.d("AdbWireless", "Starting persistent shell via Root")
-                    Runtime.getRuntime().exec(arrayOf("su"))
                 } else {
                     null
                 }
@@ -582,13 +498,13 @@ class AdbWirelessClient {
 
                         val injectJson = """{"id":$deviceId,"command":"inject","events":[${eventsList.joinToString(",")}]}"""
 
-                        rootOutputStream?.write((",\n" + injectJson + "\n").toByteArray(Charsets.UTF_8))
-                        rootOutputStream?.flush()
+                        uinputOutputStream?.write((",\n" + injectJson + "\n").toByteArray(Charsets.UTF_8))
+                        uinputOutputStream?.flush()
                         Log.d("AdbWireless", "uinput multi injected ($emulationMode): ${items.size} keys (value: $value)")
                         injectionSuccess = true
                     } catch (e: Exception) {
                         Log.e("AdbWireless", "Failed to inject uinput multi event, resetting process", e)
-                        cleanupRootProcess()
+                        cleanupUinputProcess()
                         injectionSuccess = false
                     }
                 }
@@ -741,11 +657,8 @@ class AdbWirelessClient {
             if (isShizukuAvailable) {
                 createShizukuProcess(cmdArray)
                 TaikoLogManager.log("Shizuku One-shot: cmd input keyevent $actionArg ${keycodes.joinToString(" ")}")
-            } else if (checkRoot()) {
-                Runtime.getRuntime().exec(arrayOf("su", "-c", "cmd input keyevent $actionArg ${keycodes.joinToString(" ")}"))
-                TaikoLogManager.log("Root One-shot: cmd input keyevent $actionArg ${keycodes.joinToString(" ")}")
             } else {
-                Log.w("AdbWireless", "Cannot inject keyevent: Shizuku is not running / permitted and device is not rooted.")
+                Log.w("AdbWireless", "Cannot inject keyevent: Shizuku is not running or permitted.")
             }
             Log.d("AdbWireless", "One-shot fallback execution completed: cmd input keyevent $actionArg ${keycodes.joinToString(" ")}")
         } catch (e: Throwable) {
@@ -785,21 +698,21 @@ class AdbWirelessClient {
         }
     }
 
-    private fun cleanupRootProcess() {
+    private fun cleanupUinputProcess() {
         try {
-            if (rootOutputStream != null) {
+            if (uinputOutputStream != null) {
                 try {
-                    rootOutputStream?.writeBytes("\n]\n")
-                    rootOutputStream?.flush()
+                    uinputOutputStream?.writeBytes("\n]\n")
+                    uinputOutputStream?.flush()
                 } catch (e: Exception) {}
-                rootOutputStream?.close()
+                uinputOutputStream?.close()
             }
         } catch (e: Exception) {}
         try {
-            rootProcess?.destroy()
+            uinputProcess?.destroy()
         } catch (e: Exception) {}
-        rootProcess = null
-        rootOutputStream = null
+        uinputProcess = null
+        uinputOutputStream = null
         isUinputRegistered = false
     }
 
@@ -925,7 +838,7 @@ class AdbWirelessClient {
 
     fun release() {
         inputExecutor.execute {
-            cleanupRootProcess()
+            cleanupUinputProcess()
             cleanupPersistentShell()
         }
         inputExecutor.shutdown()

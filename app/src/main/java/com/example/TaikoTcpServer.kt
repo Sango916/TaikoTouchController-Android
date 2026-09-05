@@ -2,9 +2,9 @@ package com.example
 
 import android.util.Log
 import java.io.BufferedReader
-import java.io.BufferedWriter
 import java.io.InputStreamReader
-import java.io.OutputStreamWriter
+import java.io.OutputStream
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.util.concurrent.ConcurrentHashMap
@@ -14,14 +14,14 @@ class TaikoTcpServer(
     private val onConnectionStatusChanged: (Int) -> Unit // returns the number of active PC clients
 ) {
     private var serverSocket: ServerSocket? = null
-    private val clients = ConcurrentHashMap<Socket, BufferedWriter>()
+    private val clients = ConcurrentHashMap<Socket, OutputStream>()
     private var executor = Executors.newCachedThreadPool()
     private var sendExecutor = Executors.newSingleThreadExecutor()
     @Volatile private var isRunning = false
     @Volatile private var activePort = 60001
 
     fun start(port: Int = 60001) {
-        if (isRunning) return
+        if (isRunning && serverSocket != null && !serverSocket!!.isClosed) return
         isRunning = true
         activePort = port
         
@@ -40,20 +40,20 @@ class TaikoTcpServer(
                     try {
                         sSocket = ServerSocket().apply {
                             reuseAddress = true
-                            bind(java.net.InetSocketAddress(port))
+                            bind(InetSocketAddress("0.0.0.0", port))
                         }
                         break
                     } catch (e: Exception) {
                         if (i < 10) {
                             Log.w("TaikoTcpServer", "Port $port waiting for socket release (attempt $i/10)...")
-                            try { Thread.sleep(200) } catch (_: InterruptedException) { return@execute }
+                            try { Thread.sleep(150) } catch (_: InterruptedException) { return@execute }
                         } else {
                             throw e
                         }
                     }
                 }
                 serverSocket = sSocket
-                Log.d("TaikoTcpServer", "Server bound successfully to port $port (dual-stack)")
+                Log.d("TaikoTcpServer", "Server bound successfully to 0.0.0.0:$port")
                 TaikoLogManager.log("TCP Server active on port $port. Ready for PC connection!")
                 
                 while (isRunning) {
@@ -68,6 +68,7 @@ class TaikoTcpServer(
                 if (isRunning) {
                     Log.e("TaikoTcpServer", "Error in server socket accept", e)
                     TaikoLogManager.log("TCP Server Error: ${e.message}")
+                    isRunning = false
                 }
             }
         }
@@ -76,10 +77,11 @@ class TaikoTcpServer(
     private fun handleClient(socket: Socket) {
         try {
             socket.tcpNoDelay = true
-            try { socket.trafficClass = 0x10 } catch (_: Exception) {}
             socket.keepAlive = true
+            try { socket.trafficClass = 0x10 } catch (_: Exception) {} // IPTOS_LOWDELAY
+            try { socket.sendBufferSize = 4096 } catch (_: Exception) {}
 
-            // In USB PC mode, cleanup any prior stale/abandoned connections
+            // In USB PC mode, cleanup any prior stale/abandoned connections immediately
             val priorSockets = clients.keys.toList()
             for (oldSocket in priorSockets) {
                 if (oldSocket != socket) {
@@ -88,45 +90,28 @@ class TaikoTcpServer(
                 }
             }
 
-            val writer = BufferedWriter(OutputStreamWriter(socket.getOutputStream(), "UTF-8"))
-            val reader = BufferedReader(InputStreamReader(socket.getInputStream(), "UTF-8"))
+            val outStream = socket.getOutputStream()
+            val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
             
             // Send initial OK handshake banner
-            synchronized(writer) {
-                writer.write("OK\n")
-                writer.flush()
-            }
+            outStream.write("OK\n".toByteArray(Charsets.UTF_8))
+            outStream.flush()
 
-            clients[socket] = writer
+            clients[socket] = outStream
             onConnectionStatusChanged(clients.size)
 
             Log.d("TaikoTcpServer", "PC Client connected successfully, active clients: ${clients.size}")
-            TaikoLogManager.log("PC Client connected to port $activePort (Client remote port: ${socket.port}) | Active clients: ${clients.size}")
+            TaikoLogManager.log("PC Client connected to port $activePort (Remote port: ${socket.port}) | Active clients: ${clients.size}")
 
-            // Start daemon heartbeat thread: sends PING every 2 seconds to keep connection alive
-            val heartbeatThread = Thread {
-                try {
-                    while (isRunning && !socket.isClosed && clients.containsKey(socket)) {
-                        Thread.sleep(2000)
-                        synchronized(writer) {
-                            writer.write("PING\n")
-                            writer.flush()
-                        }
-                    }
-                } catch (_: Exception) {}
-            }.apply {
-                isDaemon = true
-                name = "TaikoTcp-Heartbeat-${socket.port}"
-                start()
-            }
-
-            // Reader loop blocks on input stream. When client closes connection, readLine() immediately returns null (EOF)
+            // Reader loop: blocks waiting for client messages (e.g. PING) or EOF on disconnect
             while (isRunning && !socket.isClosed) {
                 val line = reader.readLine() ?: break
                 if (line == "PING") {
-                    synchronized(writer) {
-                        writer.write("PONG\n")
-                        writer.flush()
+                    try {
+                        outStream.write("PONG\n".toByteArray(Charsets.UTF_8))
+                        outStream.flush()
+                    } catch (_: Exception) {
+                        break
                     }
                 }
             }
@@ -155,20 +140,19 @@ class TaikoTcpServer(
                 append(action).append(" ").append(key).append("\n")
             }
         }
+        val bytes = message.toByteArray(Charsets.UTF_8)
 
         sendExecutor.execute {
             val iterator = clients.entries.iterator()
             while (iterator.hasNext()) {
                 val entry = iterator.next()
                 val socket = entry.key
-                val writer = entry.value
+                val out = entry.value
                 try {
-                    synchronized(writer) {
-                        writer.write(message)
-                        writer.flush()
-                    }
+                    out.write(bytes)
+                    out.flush()
                 } catch (e: Exception) {
-                    Log.w("TaikoTcpServer", "Failed to write to socket, removing client", e)
+                    Log.w("TaikoTcpServer", "Failed to write to socket, dropping client", e)
                     iterator.remove()
                     try {
                         socket.close()
