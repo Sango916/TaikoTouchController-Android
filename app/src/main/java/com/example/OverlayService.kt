@@ -187,8 +187,29 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
             ?: displayManager?.displays?.firstOrNull()
 
         currentDisplay = target
-        val dContext = if (target != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
-            createDisplayContext(target)
+
+        val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+
+        // On Android 12+ (API 31+), createWindowContext creates a genuine WindowContext
+        // bound specifically to the target display, with its own independent Configuration and WindowManager.
+        val dContext = if (target != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                try {
+                    val baseDisplayContext = createDisplayContext(target)
+                    baseDisplayContext.createWindowContext(layoutType, null)
+                } catch (e: Exception) {
+                    createDisplayContext(target)
+                }
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
+                createDisplayContext(target)
+            } else {
+                this
+            }
         } else {
             this
         }
@@ -197,22 +218,18 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
     }
 
     /**
-     * Get accurate full screen bounds for the target display without clipping or misaligning.
+     * Get the true physical/logical pixel resolution of the target Display object directly.
+     * We MUST NOT use WindowMetrics.bounds or Activity/Service resources because they reflect
+     * the screen where the main Activity is located rather than the overlay's target screen.
      */
     private fun getTargetDisplaySize(): Pair<Int, Int> {
-        val d = currentDisplay
+        val d = currentDisplay ?: run {
+            val dm = getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
+            dm?.getDisplay(targetDisplayId) ?: dm?.displays?.firstOrNull()
+        }
+
         if (d != null) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                try {
-                    val wm = (displayContext ?: this).getSystemService(Context.WINDOW_SERVICE) as WindowManager
-                    val bounds = wm.currentWindowMetrics.bounds
-                    if (bounds.width() > 0 && bounds.height() > 0) {
-                        return Pair(bounds.width(), bounds.height())
-                    }
-                } catch (e: Exception) {
-                    // Fallback to metrics
-                }
-            }
+            // 1. Direct real metrics of the target display
             val dm = DisplayMetrics()
             try {
                 @Suppress("DEPRECATION")
@@ -221,11 +238,56 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
                     return Pair(dm.widthPixels, dm.heightPixels)
                 }
             } catch (e: Exception) {
-                // Fallback to display metrics
+                // Fallback
+            }
+
+            // 2. Direct real size of the target display
+            try {
+                val point = android.graphics.Point()
+                @Suppress("DEPRECATION")
+                d.getRealSize(point)
+                if (point.x > 0 && point.y > 0) {
+                    return Pair(point.x, point.y)
+                }
+            } catch (e: Exception) {
+                // Fallback
+            }
+
+            // 3. Display mode hardware resolution (accounting for rotation)
+            try {
+                val mode = d.mode
+                val rotation = d.rotation
+                val isLandscape = rotation == android.view.Surface.ROTATION_90 || rotation == android.view.Surface.ROTATION_270
+                val w = if (isLandscape) maxOf(mode.physicalWidth, mode.physicalHeight) else minOf(mode.physicalWidth, mode.physicalHeight)
+                val h = if (isLandscape) minOf(mode.physicalWidth, mode.physicalHeight) else maxOf(mode.physicalWidth, mode.physicalHeight)
+                if (w > 0 && h > 0) {
+                    return Pair(w, h)
+                }
+            } catch (e: Exception) {
+                // Fallback
             }
         }
+
         val resDm = (displayContext ?: this).resources.displayMetrics
         return Pair(resDm.widthPixels, resDm.heightPixels)
+    }
+
+    /**
+     * Get density specifically for the target display.
+     */
+    private fun getTargetDensity(): Float {
+        val d = currentDisplay
+        if (d != null) {
+            val dm = DisplayMetrics()
+            try {
+                @Suppress("DEPRECATION")
+                d.getRealMetrics(dm)
+                if (dm.density > 0f) return dm.density
+            } catch (e: Exception) {
+                // Fallback
+            }
+        }
+        return (displayContext ?: this).resources.displayMetrics.density
     }
 
     /**
@@ -235,12 +297,29 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
         if (newDisplayId == targetDisplayId && isOverlayRunning) return
         try {
             padComposeView?.let { windowManager?.removeViewImmediate(it) }
+        } catch (e: Exception) {
+            try { padComposeView?.let { windowManager?.removeView(it) } } catch (e2: Exception) {}
+        }
+        try {
             bubbleComposeView?.let { windowManager?.removeViewImmediate(it) }
         } catch (e: Exception) {
-            android.util.Log.e("OverlayService", "Failed removing views during switch", e)
+            try { bubbleComposeView?.let { windowManager?.removeView(it) } } catch (e2: Exception) {}
         }
+        padComposeView = null
+        bubbleComposeView = null
 
         initDisplayContext(newDisplayId)
+
+        // Recalculate bubble coordinates within the bounds of the new display
+        val (dispW, dispH) = getTargetDisplaySize()
+        val density = getTargetDensity()
+        val bubbleSize = (56 * density).toInt()
+        val margin = (12 * density).toInt()
+        bubblePosX = (dispW - bubbleSize - margin).toFloat().coerceAtLeast(margin.toFloat())
+        bubblePosY = (dispH * 0.25f).coerceAtLeast(margin.toFloat())
+        isPlacedOnRightState.value = true
+        isPlacedOnTopState.value = true
+
         setupOverlays()
         val isSub = newDisplayId != Display.DEFAULT_DISPLAY
         val label = if (isSub) "下画面 (サブ画面)" else "上画面 (メイン画面)"
@@ -400,6 +479,7 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
 
         val (dispWidth, dispHeight) = getTargetDisplaySize()
         val dContext = displayContext ?: this
+        val targetDensity = getTargetDensity()
 
         // 1. Pad Overlay Window (Full Screen on Target Display)
         // Initial flag includes FLAG_NOT_TOUCHABLE to allow interaction with background apps
@@ -418,6 +498,8 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
             gravity = Gravity.TOP or Gravity.START
             x = 0
             y = 0
+            width = dispWidth
+            height = dispHeight
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
@@ -433,8 +515,14 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
                 // Constant overlay transparency regardless of touch enabled/disabled state
                 val currentAlpha = (settings.overlayAlphaPercent / 100f).coerceIn(0.1f, 1.0f)
 
+                // Explicitly provide target display size in DP to guarantee correct scale and centering
+                // regardless of where the main application activity is currently located
+                val densityScope = androidx.compose.ui.unit.Density(targetDensity)
+                val widthDp = with(densityScope) { dispWidth.toDp() }
+                val heightDp = with(densityScope) { dispHeight.toDp() }
+
                 Box(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.size(widthDp, heightDp),
                     contentAlignment = Alignment.Center
                 ) {
                     TaikoPad(
@@ -463,7 +551,7 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
         val bubbleFlags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
 
-        val density = dContext.resources.displayMetrics.density
+        val density = targetDensity
         val bubbleSize = (56 * density).toInt()
         val margin = (12 * density).toInt()
 
@@ -593,9 +681,7 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
         view.post {
             try {
                 val (dispWidth, dispHeight) = getTargetDisplaySize()
-                val dContext = displayContext ?: this
-                val dm = dContext.resources.displayMetrics
-                val density = dm.density
+                val density = getTargetDensity()
 
                 val bubbleSize = (56 * density).toInt()
                 val menuWidth = (220 * density).toInt()
