@@ -683,11 +683,15 @@ fun TaikoPad(
                     style = Stroke(width = 4f)
                 )
 
-                // Center split guide dotted line (clipped strictly within drum surface boundaries)
+                // Center split guide dotted line
+                // In overlay mode, clip strictly within the drum surface boundaries.
+                // In non-overlay mode (main app screen), extend full height vertically across the screen as before.
+                val lineStartY = if (isOverlay) centerY - visualDrumRadius else 0f
+                val lineEndY = if (isOverlay) centerY + visualDrumRadius else size.height
                 drawLine(
                     color = if (isDark) Color(0xFF94A3B8).copy(alpha = 0.35f) else Color(0xFF78350F).copy(alpha = 0.25f),
-                    start = Offset(centerX, centerY - visualDrumRadius),
-                    end = Offset(centerX, centerY + visualDrumRadius),
+                    start = Offset(centerX, lineStartY),
+                    end = Offset(centerX, lineEndY),
                     strokeWidth = 3f,
                     pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
                 )
