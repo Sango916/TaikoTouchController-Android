@@ -8,6 +8,10 @@ Transform your Android device into a responsive Taiko drum controller!
 Play games directly on your Android device, or send inputs over USB to your PC.
 
 <p align="center">
+  <img src="assets/Screenshot_20260915-232731.png" alt="Taiko Touch Controller Screen" width="400">
+</p>
+
+<p align="center">
   <a href="https://github.com/Sango916/TaikoTouchController-Android/releases/latest"><img src="assets/badges/get-it-on-github.png" alt="Get it on GitHub" height="48"></a>
   <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22com.sango.taikocontroller%22%2C%22url%22%3A%22https%3A//github.com/Sango916/TaikoTouchController-Android%22%2C%22author%22%3A%22Sango916%22%2C%22name%22%3A%22%E5%A4%AA%E9%BC%93%E3%82%BF%E3%83%83%E3%83%81%E3%82%B3%E3%83%B3%E3%83%88%E3%83%AD%E3%83%BC%E3%83%A9%E3%83%BC%22%7D"><img src="assets/badges/get-it-on-obtainium.png" alt="Get it on Obtainium" height="48"></a>
 </p>
