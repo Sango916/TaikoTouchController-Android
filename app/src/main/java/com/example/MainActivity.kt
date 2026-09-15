@@ -131,9 +131,9 @@ class MainActivity : ComponentActivity() {
             try {
                 shizukuPermissionGranted.value = (grantResult == android.content.pm.PackageManager.PERMISSION_GRANTED)
                 if (shizukuPermissionGranted.value) {
-                    TaikoLogManager.log("Shizuku権限: 承認されました")
+                    TaikoLogManager.log(tr(this@MainActivity, "Shizuku権限: 承認されました", "Shizuku permission: Granted"))
                 } else {
-                    TaikoLogManager.log("Shizuku権限: 拒否されました")
+                    TaikoLogManager.log(tr(this@MainActivity, "Shizuku権限: 拒否されました", "Shizuku permission: Denied"))
                 }
             } catch (e: Throwable) {
                 android.util.Log.e("MainActivity", "Error in shizukuListener", e)
@@ -222,18 +222,18 @@ class MainActivity : ComponentActivity() {
                 } catch (_: Throwable) { false }
                 if (isGranted) {
                     shizukuPermissionGranted.value = true
-                    Toast.makeText(this, "Shizuku権限は既に承認されています", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, tr(this, "Shizuku権限は既に承認されています", "Shizuku permission already granted"), Toast.LENGTH_SHORT).show()
                 } else {
                     Shizuku.requestPermission(1001)
                 }
             } else {
                 shizukuInstalledAndRunning.value = false
                 shizukuPermissionGranted.value = false
-                Toast.makeText(this, "Shizukuサービスが起動していません", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, tr(this, "Shizukuサービスが起動していません", "Shizuku service is not running"), Toast.LENGTH_SHORT).show()
             }
         } catch (e: Throwable) {
             android.util.Log.e("MainActivity", "Failed to request Shizuku permission", e)
-            Toast.makeText(this, "Shizuku権限の要求に失敗しました: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, tr(this, "Shizuku権限の要求に失敗しました: ${e.message}", "Failed to request Shizuku permission: ${e.message}"), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -323,7 +323,7 @@ class MainActivity : ComponentActivity() {
                     val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
                     startActivity(intent)
                 } catch (ex: Exception) {
-                    Toast.makeText(this, "オーバーレイ設定画面を開けませんでした", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, tr(this, "オーバーレイ設定画面を開けませんでした", "Could not open overlay settings screen"), Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -445,7 +445,7 @@ class MainActivity : ComponentActivity() {
                 if (isFullScreen) {
                     window.addFlags(android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
                     insetsController.hide(WindowInsetsCompat.Type.systemBars())
-                    Toast.makeText(context, "全画面モード: 終了ボタンを長押しで閉じます", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, tr(context, "全画面モード: 終了ボタンを長押しで閉じます", "Fullscreen mode: Long press exit button to close"), Toast.LENGTH_SHORT).show()
                 } else {
                     window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
                     insetsController.show(WindowInsetsCompat.Type.systemBars())
@@ -518,7 +518,7 @@ class MainActivity : ComponentActivity() {
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.FullscreenExit,
-                                    contentDescription = "長押しで全画面を終了",
+                                    contentDescription = tr("長押しで全画面を終了", "Long press to exit fullscreen"),
                                     tint = Color.White,
                                     modifier = Modifier.size(26.dp)
                                 )
@@ -555,7 +555,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = "太鼓タッチコントローラー",
+                                        text = tr("太鼓タッチコントローラー", "Taiko Touch Controller"),
                                         fontSize = 16.sp,
                                         fontWeight = FontWeight.Black,
                                         color = Color(0xFF78350F).invertIfDark(isDarkTheme)
@@ -579,7 +579,7 @@ class MainActivity : ComponentActivity() {
                                             )
                                             Spacer(modifier = Modifier.width(6.dp))
                                             Text(
-                                                text = "💻 PC接続中 (${pcClientsCount}台)",
+                                                text = tr("💻 PC接続中 (${pcClientsCount}台)", "💻 PC Connected (${pcClientsCount})"),
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = if (isDarkTheme) Color(0xFFA7F3D0) else Color(0xFF065F46)
@@ -605,12 +605,12 @@ class MainActivity : ComponentActivity() {
                                         Tab(
                                             selected = activeTab == 0,
                                             onClick = { activeTab = 0 },
-                                            text = { Text("🥁 太鼓コントローラー", fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+                                            text = { Text(tr("🥁 太鼓コントローラー", "🥁 Taiko Controller"), fontWeight = FontWeight.Bold, fontSize = 13.sp) }
                                         )
                                         Tab(
                                             selected = activeTab == 1,
                                             onClick = { activeTab = 1 },
-                                            text = { Text("⚙️ 設定", fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+                                            text = { Text(tr("⚙️ 設定", "⚙️ Settings"), fontWeight = FontWeight.Bold, fontSize = 13.sp) }
                                         )
                                     }
 
@@ -748,11 +748,14 @@ class MainActivity : ComponentActivity() {
                         AlertDialog(
                             onDismissRequest = { showOverlayPermissionDialogState.value = false },
                             title = {
-                                Text("🪟 「他のアプリの上に重ねて表示」の許可", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                Text(tr("🪟 「他のアプリの上に重ねて表示」の許可", "🪟 'Display over other apps' Permission"), fontWeight = FontWeight.Bold, fontSize = 16.sp)
                             },
                             text = {
                                 Text(
-                                    "太鼓コントローラーを他のアプリの画面上にオーバーレイ表示するため、システム設定で「他のアプリの上に重ねて表示」を許可してください。\n\n許可後に再度「オーバーレイ」ボタンを押すと起動します。",
+                                    tr(
+                                        "太鼓コントローラーを他のアプリの画面上にオーバーレイ表示するため、システム設定で「他のアプリの上に重ねて表示」を許可してください。\n\n許可後に再度「オーバーレイ」ボタンを押すと起動します。",
+                                        "To display the Taiko controller as an overlay over other apps, please grant 'Display over other apps' in system settings.\n\nAfter granting permission, press the 'Overlay' button again to launch."
+                                    ),
                                     fontSize = 13.sp,
                                     lineHeight = 18.sp
                                 )
@@ -765,12 +768,12 @@ class MainActivity : ComponentActivity() {
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
                                 ) {
-                                    Text("設定を開く", fontWeight = FontWeight.Bold)
+                                    Text(tr("設定を開く", "Open Settings"), fontWeight = FontWeight.Bold)
                                 }
                             },
                             dismissButton = {
                                 TextButton(onClick = { showOverlayPermissionDialogState.value = false }) {
-                                    Text("キャンセル")
+                                    Text(tr("キャンセル", "Cancel"))
                                 }
                             }
                         )

@@ -100,7 +100,7 @@ fun SettingsPanel(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "⚙️ コントローラー設定項目",
+                text = tr("⚙️ コントローラー設定項目", "⚙️ Controller Settings"),
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF78350F).invertIfDark(isDark)
@@ -128,7 +128,7 @@ fun SettingsPanel(
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
-                    text = if (isAllExpanded) "すべて折りたたむ" else "すべて展開",
+                    text = if (isAllExpanded) tr("すべて折りたたむ", "Collapse All") else tr("すべて展開", "Expand All"),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFFD97706).invertIfDark(isDark)
@@ -193,13 +193,13 @@ fun SettingsPanel(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "📱 表示モード切り替え",
+                            text = tr("📱 表示モード切り替え", "📱 Display Mode"),
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF78350F).invertIfDark(isDark)
                         )
                         Text(
-                            text = "全画面表示または他アプリの上に重ねて表示",
+                            text = tr("全画面表示または他アプリの上に重ねて表示", "Display in fullscreen or overlay over other apps"),
                             fontSize = 10.sp,
                             color = if (isDark) Color.White else Color.Gray
                         )
@@ -225,7 +225,7 @@ fun SettingsPanel(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "📱 全画面",
+                            text = tr("📱 全画面", "📱 Fullscreen"),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             softWrap = false
@@ -247,7 +247,7 @@ fun SettingsPanel(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "🪟 オーバーレイ",
+                            text = tr("🪟 オーバーレイ", "🪟 Overlay"),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             softWrap = false
@@ -256,8 +256,6 @@ fun SettingsPanel(
                 }
             }
         }
-
-
 
         val context = LocalContext.current
         var anotherAndroidTapCount by remember { mutableIntStateOf(0) }
@@ -348,7 +346,7 @@ fun SettingsPanel(
                             .heightIn(min = 36.dp)
                     ) {
                         Text(
-                            text = label,
+                            text = label.t(),
                             fontSize = 10.sp,
                             lineHeight = 12.sp,
                             fontWeight = FontWeight.Bold,
@@ -2487,7 +2485,7 @@ fun CollapsibleSettingCard(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
-                                text = title,
+                                text = title.t(),
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF78350F).invertIfDark(isDarkTheme)
@@ -2512,7 +2510,7 @@ fun CollapsibleSettingCard(
                                     shape = RoundedCornerShape(6.dp)
                                 ) {
                                     Text(
-                                        text = badgeText,
+                                        text = badgeText.t(),
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = effectiveBadgeTxt,
@@ -2524,7 +2522,7 @@ fun CollapsibleSettingCard(
                         if (!subtitle.isNullOrEmpty()) {
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = subtitle,
+                                text = subtitle.t(),
                                 fontSize = 11.sp,
                                 color = if (isDarkTheme) Color.White else Color.Gray,
                                 maxLines = 1,
@@ -2546,7 +2544,7 @@ fun CollapsibleSettingCard(
                     ) {
                         Icon(
                             imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                            contentDescription = if (isExpanded) "折りたたむ" else "展開する",
+                            contentDescription = if (isExpanded) tr("折りたたむ", "Collapse") else tr("展開する", "Expand"),
                             tint = Color(0xFF78350F).invertIfDark(isDarkTheme)
                         )
                     }

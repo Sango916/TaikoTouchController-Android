@@ -494,21 +494,21 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
 
         val notification: Notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, CHANNEL_ID)
-                .setContentTitle("太鼓コントローラー (オーバーレイ表示中)")
-                .setContentText("バブルメニューから判定のON/OFFやアプリ復帰が可能です")
+                .setContentTitle(tr(this, "太鼓コントローラー (オーバーレイ表示中)", "Taiko Controller (Overlay Active)"))
+                .setContentText(tr(this, "バブルメニューから判定のON/OFFやアプリ復帰が可能です", "Toggle hit detection or return to app via bubble menu"))
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentIntent(openPendingIntent)
-                .addAction(android.R.drawable.ic_menu_close_clear_cancel, "オーバーレイ終了", stopPendingIntent)
+                .addAction(android.R.drawable.ic_menu_close_clear_cancel, tr(this, "オーバーレイ終了", "Exit Overlay"), stopPendingIntent)
                 .setOngoing(true)
                 .build()
         } else {
             @Suppress("DEPRECATION")
             Notification.Builder(this)
-                .setContentTitle("太鼓コントローラー (オーバーレイ表示中)")
-                .setContentText("バブルメニューから判定のON/OFFやアプリ復帰が可能です")
+                .setContentTitle(tr(this, "太鼓コントローラー (オーバーレイ表示中)", "Taiko Controller (Overlay Active)"))
+                .setContentText(tr(this, "バブルメニューから判定のON/OFFやアプリ復帰が可能です", "Toggle hit detection or return to app via bubble menu"))
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentIntent(openPendingIntent)
-                .addAction(android.R.drawable.ic_menu_close_clear_cancel, "オーバーレイ終了", stopPendingIntent)
+                .addAction(android.R.drawable.ic_menu_close_clear_cancel, tr(this, "オーバーレイ終了", "Exit Overlay"), stopPendingIntent)
                 .setOngoing(true)
                 .build()
         }
@@ -1043,7 +1043,7 @@ fun BubbleButton(
             )
             if (isTouchEnabled) {
                 Text(
-                    text = "長押し",
+                    text = tr("長押し", "Hold"),
                     fontSize = 7.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFFFEF08A)
@@ -1084,7 +1084,7 @@ fun BubbleMenuCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "🥁 太鼓オーバーレイ",
+                    text = tr("🥁 太鼓オーバーレイ", "🥁 Taiko Overlay"),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFFFDE68A)
@@ -1095,7 +1095,7 @@ fun BubbleMenuCard(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = "メニューを閉じる",
+                        contentDescription = tr("メニューを閉じる", "Close Menu"),
                         tint = Color.White.copy(alpha = 0.7f),
                         modifier = Modifier.size(16.dp)
                     )
@@ -1125,7 +1125,7 @@ fun BubbleMenuCard(
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
-                        text = if (isTouchEnabled) "判定: ON (プレイ中)" else "判定: OFF (透過中)",
+                        text = if (isTouchEnabled) tr("判定: ON (プレイ中)", "Hit: ON (Playing)") else tr("判定: OFF (透過中)", "Hit: OFF (Pass-through)"),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -1134,7 +1134,7 @@ fun BubbleMenuCard(
             }
             if (isTouchEnabled) {
                 Text(
-                    text = "※ プレイ中の誤動作防止のため、判定ON時はバブル長押しでメニューを開きます",
+                    text = tr("※ プレイ中の誤動作防止のため、判定ON時はバブル長押しでメニューを開きます", "※ To prevent accidental touches while playing, long press the bubble when Hit is ON"),
                     fontSize = 9.sp,
                     color = Color(0xFFFDE68A).copy(alpha = 0.9f),
                     modifier = Modifier.padding(horizontal = 2.dp)
@@ -1162,7 +1162,7 @@ fun BubbleMenuCard(
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
-                            text = if (isSubDisplay) "🖥️ 上画面 (メイン) へ移動" else "📱 下画面 (サブ) へ移動",
+                            text = if (isSubDisplay) tr("🖥️ 上画面 (メイン) へ移動", "🖥️ Move to Top (Main) Screen") else tr("📱 下画面 (サブ) へ移動", "📱 Move to Bottom (Sub) Screen"),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFFFDE68A)
@@ -1191,7 +1191,7 @@ fun BubbleMenuCard(
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
-                        text = "太鼓アプリを開く",
+                        text = tr("太鼓アプリを開く", "Open Taiko App"),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF93C5FD)
@@ -1219,7 +1219,7 @@ fun BubbleMenuCard(
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
-                        text = "オーバーレイ終了",
+                        text = tr("オーバーレイ終了", "Exit Overlay"),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFFF87171)

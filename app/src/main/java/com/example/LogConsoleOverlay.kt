@@ -145,7 +145,7 @@ fun LogConsoleOverlay(
                         modifier = Modifier.height(22.dp)
                     ) {
                         Text(
-                            text = if (showDeviceListMode) "← ログ表示" else "デバイス一覧",
+                            text = if (showDeviceListMode) tr("← ログ表示", "← Logs") else tr("デバイス一覧", "Device List"),
                             fontSize = 9.sp,
                             color = if (showDeviceListMode) Color(0xFFFCD34D) else Color(0xFF60A5FA),
                             fontWeight = FontWeight.Bold
@@ -159,7 +159,7 @@ fun LogConsoleOverlay(
                             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
                             modifier = Modifier.height(22.dp)
                         ) {
-                            Text("更新", fontSize = 9.sp, color = Color.White)
+                            Text(tr("更新", "Refresh"), fontSize = 9.sp, color = Color.White)
                         }
                     } else {
                         TextButton(
@@ -167,7 +167,7 @@ fun LogConsoleOverlay(
                             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
                             modifier = Modifier.height(22.dp)
                         ) {
-                            Text("クリア", fontSize = 9.sp, color = Color.White)
+                            Text(tr("クリア", "Clear"), fontSize = 9.sp, color = Color.White)
                         }
                     }
 
@@ -177,7 +177,7 @@ fun LogConsoleOverlay(
                         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
                         modifier = Modifier.height(22.dp)
                     ) {
-                        Text(if (isExpanded) "縮小" else "拡大", fontSize = 9.sp, color = Color.White)
+                        Text(if (isExpanded) tr("縮小", "Collapse") else tr("拡大", "Expand"), fontSize = 9.sp, color = Color.White)
                     }
 
                     // Close button
@@ -187,7 +187,7 @@ fun LogConsoleOverlay(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Close,
-                            contentDescription = "Hide logs",
+                            contentDescription = tr("閉じる", "Close"),
                             tint = Color.White,
                             modifier = Modifier.size(14.dp)
                         )
@@ -209,7 +209,7 @@ fun LogConsoleOverlay(
                 if (showDeviceListMode) {
                     if (deviceList.isEmpty()) {
                         Text(
-                            "デバイス情報を取得中...",
+                            tr("デバイス情報を取得中...", "Retrieving device info..."),
                             fontSize = 9.sp,
                             color = Color.White.copy(alpha = 0.8f),
                             modifier = Modifier.align(Alignment.Center)
@@ -237,7 +237,7 @@ fun LogConsoleOverlay(
                 } else {
                     if (logs.isEmpty()) {
                         Text(
-                            "ログは空です。太鼓を叩くか、接続を行うとリアルタイムでここに出力されます。",
+                            tr("ログは空です。太鼓を叩くか、接続を行うとリアルタイムでここに出力されます。", "Logs are empty. Tapping the drum or connecting will output logs here."),
                             fontSize = 9.sp,
                             color = Color.White.copy(alpha = 0.8f),
                             modifier = Modifier.align(Alignment.Center)
