@@ -43,6 +43,8 @@ data class ControllerSettings(
     var connectionMode: String = "shizuku", // "shizuku" (この端末), "usb-wired" (PC), "another_android" (別のAndroid), "local-demo" (なし)
     var anotherAndroidRole: String = "sender", // "sender" (送信側: 太鼓) / "receiver" (受信側: ゲーム)
     var anotherAndroidConnectionType: String = "wired", // "wired" (有線 USB通信: デフォルト/推奨), "wireless" (無線 Wi-Fi), "bluetooth" (Bluetooth)
+    var wifiTransportMode: String = "hybrid", // "hybrid" (UDP+TCP), "udp_only", "tcp_only"
+    var tapSendMode: String = "hit", // "hit" (HITパルス方式: 推奨・重複/抜け防止), "down_up" (従来のDOWN/UP方式)
     var showWirelessOptions: Boolean = false, // 隠しモード: 「別のAndroid」を10回タップで表示/非表示トグル
     var anotherAndroidTargetIp: String = "192.168.1.100",
     var anotherAndroidPort: String = "60002",

@@ -126,11 +126,11 @@ fun LogConsoleOverlay(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (showDeviceListMode) {
-                        Text("🔌 接続中の入力デバイス一覧 ", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF60A5FA))
-                        Text("(${deviceList.size}台)", fontSize = 9.sp, color = Color.LightGray)
+                        Text(tr("🔌 接続中の入力デバイス一覧 ", "🔌 Connected Input Devices "), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF60A5FA))
+                        Text(tr("(${deviceList.size}台)", "(${deviceList.size} units)"), fontSize = 9.sp, color = Color.LightGray)
                     } else {
-                        Text("📋 リアルタイム入力・接続ログ ", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFCD34D))
-                        Text("(${logs.size}件)", fontSize = 9.sp, color = Color.LightGray)
+                        Text(tr("📋 リアルタイム入力・接続ログ ", "📋 Real-time Input & Connection Logs "), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFCD34D))
+                        Text(tr("(${logs.size}件)", "(${logs.size} items)"), fontSize = 9.sp, color = Color.LightGray)
                     }
                 }
                 
@@ -249,7 +249,7 @@ fun LogConsoleOverlay(
                         ) {
                             items(logs) { logMsg ->
                                 Text(
-                                    text = logMsg,
+                                    text = logMsg.t(),
                                     fontSize = 8.5.sp,
                                     fontFamily = FontFamily.Monospace,
                                     color = when {

@@ -372,9 +372,9 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
 
         setupOverlays()
         val isSub = newDisplayId != Display.DEFAULT_DISPLAY
-        val label = if (isSub) "下画面 (サブ画面)" else "上画面 (メイン画面)"
-        val touchStatusText = if (isTouchEnabledState.value) "判定ON (タッチ有効)" else "判定OFF (透過中)"
-        Toast.makeText(this, "太鼓オーバーレイを $label に移動しました\n[$touchStatusText]", Toast.LENGTH_SHORT).show()
+        val label = if (isSub) tr(this, "下画面 (サブ画面)", "Bottom Screen (Sub)") else tr(this, "上画面 (メイン画面)", "Top Screen (Main)")
+        val touchStatusText = if (isTouchEnabledState.value) tr(this, "判定ON (タッチ有効)", "Hit ON (Touch Active)") else tr(this, "判定OFF (透過中)", "Hit OFF (Pass-through)")
+        Toast.makeText(this, tr(this, "太鼓オーバーレイを $label に移動しました\n[$touchStatusText]", "Moved Taiko overlay to $label\n[$touchStatusText]"), Toast.LENGTH_SHORT).show()
     }
 
     private fun updateSettingsInternal(newSettings: ControllerSettings) {
@@ -404,8 +404,8 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
             lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
             lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
             val isSub = targetDisplayId != Display.DEFAULT_DISPLAY
-            val screenLabel = if (isSub) "下画面" else "画面"
-            Toast.makeText(this, "太鼓オーバーレイ起動 ($screenLabel / 初期状態: 判定OFF)\nバブルメニューから判定をONにできます", Toast.LENGTH_LONG).show()
+            val screenLabel = if (isSub) tr(this, "下画面", "Bottom Screen") else tr(this, "画面", "Screen")
+            Toast.makeText(this, tr(this, "太鼓オーバーレイ起動 ($screenLabel / 初期状態: 判定OFF)\nバブルメニューから判定をONにできます", "Taiko overlay launched ($screenLabel / Initial: Hit OFF)\nToggle Hit ON via bubble menu"), Toast.LENGTH_LONG).show()
         }
 
         return START_STICKY
@@ -464,10 +464,10 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "太鼓オーバーレイ表示",
+                tr(this@OverlayService, "太鼓オーバーレイ表示", "Taiko Overlay Display"),
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "太鼓コントローラーのオーバーレイ表示を維持します"
+                description = tr(this@OverlayService, "太鼓コントローラーのオーバーレイ表示を維持します", "Keeps Taiko controller overlay active over other apps")
                 setShowBadge(false)
             }
             val notificationManager = getSystemService(NotificationManager::class.java)
@@ -690,7 +690,7 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
             windowManager?.addView(bubbleComposeView, bubbleLayoutParams)
         } catch (e: Exception) {
             android.util.Log.e("OverlayService", "Failed to add overlay views to WindowManager", e)
-            Toast.makeText(this, "オーバーレイの追加に失敗しました: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, tr(this, "オーバーレイの追加に失敗しました: ${e.message}", "Failed to add overlay: ${e.message}"), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -727,9 +727,9 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
         try {
             windowManager?.updateViewLayout(view, params)
             if (newTouchState) {
-                Toast.makeText(this, "🥁 太鼓の判定: ON (プレイ中)", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, tr(this, "🥁 太鼓の判定: ON (プレイ中)", "🥁 Drum Hit: ON (Playing)"), Toast.LENGTH_SHORT).show()
             } else {
-                Toast.makeText(this, "🛡️ 太鼓の判定: OFF (タッチ透過中)", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, tr(this, "🛡️ 太鼓の判定: OFF (タッチ透過中)", "🛡️ Drum Hit: OFF (Pass-through)"), Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
             android.util.Log.e("OverlayService", "Failed to update pad touch flags", e)
@@ -861,7 +861,7 @@ class OverlayService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStat
 
         audioPlayer?.release()
         audioPlayer = null
-        Toast.makeText(this, "太鼓オーバーレイを終了しました", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, tr(this, "太鼓オーバーレイを終了しました", "Taiko overlay closed"), Toast.LENGTH_SHORT).show()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -1008,7 +1008,7 @@ fun BubbleButton(
                                 val now = System.currentTimeMillis()
                                 if (now - lastTapWarningTime > 2500L) {
                                     lastTapWarningTime = now
-                                    Toast.makeText(context, "判定ON中: メニューを開くには長押ししてください", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, tr(context, "判定ON中: メニューを開くには長押ししてください", "Hit is ON: Long press bubble to open menu"), Toast.LENGTH_SHORT).show()
                                 }
                             }
                             break

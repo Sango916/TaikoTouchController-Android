@@ -185,7 +185,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
         } else {
-            Toast.makeText(this, "Bluetooth権限が必要です", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, tr(this, "Bluetooth権限が必要です", "Bluetooth permission required"), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -549,7 +549,7 @@ class MainActivity : ComponentActivity() {
                                     ) {
                                         Image(
                                             painter = painterResource(id = R.drawable.ic_launcher_foreground),
-                                            contentDescription = "アプリアイコン",
+                                            contentDescription = tr("アプリアイコン", "App Icon"),
                                             modifier = Modifier.fillMaxSize()
                                         )
                                     }
@@ -839,7 +839,7 @@ class MainActivity : ComponentActivity() {
                     adbStatusState.value = "connected"
                 } else {
                     adbStatusState.value = "error"
-                    adbErrorState.value = error ?: "接続に失敗しました。ワイヤレスデバッグを有効にしてください。"
+                    adbErrorState.value = error ?: tr(this@MainActivity, "接続に失敗しました。ワイヤレスデバッグを有効にしてください。", "Connection failed. Please enable Wireless Debugging.")
                 }
             }
         }
@@ -857,13 +857,13 @@ class MainActivity : ComponentActivity() {
                     adbStatusState.value = "disconnected"
                     // Successful pairing callback prompt
                     android.app.AlertDialog.Builder(this@MainActivity)
-                        .setTitle("ペアリング成功")
-                        .setMessage("ペアリングに成功しました！次に接続ボタンを押してください。")
+                        .setTitle(tr(this@MainActivity, "ペアリング成功", "Pairing Successful"))
+                        .setMessage(tr(this@MainActivity, "ペアリングに成功しました！次に接続ボタンを押してください。", "Pairing succeeded! Next, tap the Connect button."))
                         .setPositiveButton("OK", null)
                         .show()
                 } else {
                     adbStatusState.value = "error"
-                    adbErrorState.value = error ?: "ペアリングに失敗しました"
+                    adbErrorState.value = error ?: tr(this@MainActivity, "ペアリングに失敗しました", "Pairing failed")
                 }
             }
         }
@@ -902,7 +902,13 @@ class MainActivity : ComponentActivity() {
                             if (settings.anotherAndroidConnectionType == "bluetooth") {
                                 bluetoothSender?.sendKeyEvent(part, isPressed)
                             } else {
-                                remoteSender?.sendKeyEvent(part, isPressed)
+                                if (settings.tapSendMode == "hit") {
+                                    if (isPressed) {
+                                        remoteSender?.sendHitEvent(listOf(part))
+                                    }
+                                } else {
+                                    remoteSender?.sendKeyEvent(part, isPressed)
+                                }
                             }
                         } else {
                             // Receiver mode: Inject locally on this device via Shizuku
@@ -937,6 +943,7 @@ class MainActivity : ComponentActivity() {
         remoteSender?.disconnect()
 
         val sender = TaikoAndroidRemoteSender()
+        sender.transportMode = settings.wifiTransportMode
         remoteSender = sender
 
         if (isWired) {
@@ -1280,7 +1287,7 @@ class MainActivity : ComponentActivity() {
             val intent = Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS)
             startActivity(intent)
         } catch (e: Exception) {
-            Toast.makeText(this, "Bluetooth設定画面を開けませんでした", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, tr(this, "Bluetooth設定画面を開けませんでした", "Could not open Bluetooth settings"), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -1304,10 +1311,18 @@ class MainActivity : ComponentActivity() {
                 remoteReceiverClientsCountState.value = activeCount
             }
         }
+        try {
+            RemoteReceiverService.start(this)
+        } catch (e: Exception) {
+            android.util.Log.w("MainActivity", "Could not start RemoteReceiverService: ${e.message}")
+        }
         TaikoLogManager.log("Remote Receiver: Listening on port $port")
     }
 
     private fun stopRemoteReceiver() {
+        try {
+            RemoteReceiverService.stop(this)
+        } catch (_: Exception) {}
         remoteReceiver?.stop()
         remoteReceiver = null
         remoteReceiverClientsCountState.value = 0
@@ -1425,7 +1440,7 @@ class MainActivity : ComponentActivity() {
             } else {
                 stopTcpServer()
             }
-            Toast.makeText(this@MainActivity, "⚡ 通信・ポートを再初期化しました", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this@MainActivity, tr(this@MainActivity, "⚡ 通信・ポートを再初期化しました", "⚡ Reinitialized communication and ports"), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -1621,7 +1636,13 @@ class MainActivity : ComponentActivity() {
                         if (settings.anotherAndroidConnectionType == "bluetooth") {
                             bluetoothSender?.sendMultiKeyEvents(parts, actionIsPressed)
                         } else {
-                            remoteSender?.sendMultiKeyEvents(parts, actionIsPressed)
+                            if (settings.tapSendMode == "hit") {
+                                if (actionIsPressed) {
+                                    remoteSender?.sendHitEvent(parts)
+                                }
+                            } else {
+                                remoteSender?.sendMultiKeyEvents(parts, actionIsPressed)
+                            }
                         }
                         return
                     }

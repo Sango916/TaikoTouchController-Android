@@ -159,6 +159,8 @@ class TaikoBluetoothSender(private val context: Context) {
     private val currentlyHeldMask = AtomicInteger(0)
     private val seqCounter = AtomicInteger(0)
 
+    private val sendQueue = java.util.concurrent.LinkedBlockingQueue<ByteArray>(256)
+    private var writerThread: Thread? = null
     private var heartbeatThread: Thread? = null
 
     @SuppressLint("MissingPermission")
@@ -262,8 +264,9 @@ class TaikoBluetoothSender(private val context: Context) {
                 TaikoLogManager.log("Bluetooth: $deviceName に接続完了 (バイナリ直結/入力抜けゼロモード)")
                 listener.onConnected(deviceName)
 
-                // Start monitor thread & active low-latency keepalive
+                // Start monitor thread, async non-blocking writer, & active low-latency keepalive
                 startConnectionMonitor(connectedSocket, listener)
+                startWriterThread()
                 startActiveKeepalive()
 
             } catch (e: Exception) {
@@ -369,15 +372,43 @@ class TaikoBluetoothSender(private val context: Context) {
         sendDirectBytes(packet)
     }
 
+    /**
+     * Dedicated single-threaded asynchronous writer.
+     * Prevents touch/UI threads from ever blocking on Bluetooth outputStream write or socket lock.
+     */
+    private fun startWriterThread() {
+        writerThread?.interrupt()
+        sendQueue.clear()
+        writerThread = Thread({
+            try {
+                while (_isConnectedState.value && !Thread.currentThread().isInterrupted) {
+                    val packet = sendQueue.take()
+                    try {
+                        synchronized(socketLock) {
+                            outputStream?.write(packet)
+                            outputStream?.flush()
+                        }
+                    } catch (e: Exception) {
+                        Log.d("TaikoBluetoothSender", "Writer error: ${e.message}")
+                        if (_isConnectedState.value) {
+                            disconnect()
+                        }
+                        break
+                    }
+                }
+            } catch (_: InterruptedException) {
+            }
+        }, "TaikoBtAsyncWriter").apply {
+            isDaemon = true
+            start()
+        }
+    }
+
     private fun sendDirectBytes(data: ByteArray) {
         if (!_isConnectedState.value) return
-        try {
-            synchronized(socketLock) {
-                outputStream?.write(data)
-                outputStream?.flush()
-            }
-        } catch (e: Exception) {
-            Log.d("TaikoBluetoothSender", "Direct byte write note: ${e.message}")
+        if (!sendQueue.offer(data)) {
+            sendQueue.poll()
+            sendQueue.offer(data)
         }
     }
 
@@ -386,6 +417,9 @@ class TaikoBluetoothSender(private val context: Context) {
         isConnecting.set(false)
         heartbeatThread?.interrupt()
         heartbeatThread = null
+        writerThread?.interrupt()
+        writerThread = null
+        sendQueue.clear()
         currentlyHeldMask.set(0)
 
         synchronized(socketLock) {

@@ -125,6 +125,81 @@ object NetworkUtils {
     }
 }
 
+enum class RemoteAction {
+    DOWN,
+    UP,
+    HIT,
+    STATE
+}
+
+data class RemoteEvent(
+    val sessionId: Long,
+    val eventId: Long,
+    val action: RemoteAction,
+    val keys: List<String>,
+    val allHeldKeys: List<String> = emptyList()
+) {
+    fun serialize(): String {
+        val keysCsv = keys.joinToString(",")
+        val heldCsv = allHeldKeys.joinToString(",")
+        return "EV|$sessionId|$eventId|${action.name}|$keysCsv|$heldCsv"
+    }
+
+    companion object {
+        fun parse(raw: String): RemoteEvent? {
+            val trimmed = raw.trim()
+            if (trimmed.isEmpty() || trimmed == "PING") return null
+
+            if (trimmed.startsWith("EV|")) {
+                val parts = trimmed.split("|")
+                if (parts.size >= 5) {
+                    val sessionId = parts[1].toLongOrNull() ?: 0L
+                    val eventId = parts[2].toLongOrNull() ?: 0L
+                    val action = try { RemoteAction.valueOf(parts[3]) } catch (_: Exception) { RemoteAction.DOWN }
+                    val keys = if (parts[4].isEmpty()) emptyList() else parts[4].split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                    val held = if (parts.size >= 6 && parts[5].isNotEmpty()) {
+                        parts[5].split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                    } else emptyList()
+                    return RemoteEvent(sessionId, eventId, action, keys, held)
+                }
+            }
+
+            // Fallback for legacy UDP packets: <seq>|<action>|<keysCsv>|<allHeldCsv>
+            if (trimmed.contains("|")) {
+                val parts = trimmed.split("|")
+                if (parts.size >= 4) {
+                    val seq = parts[0].toLongOrNull() ?: 0L
+                    val actionStr = parts[1]
+                    val action = when (actionStr) {
+                        "DOWN" -> RemoteAction.DOWN
+                        "UP" -> RemoteAction.UP
+                        "HIT" -> RemoteAction.HIT
+                        else -> RemoteAction.STATE
+                    }
+                    val keys = parts[2].split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                    val held = parts[3].split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                    return RemoteEvent(0L, seq, action, keys, held)
+                }
+            }
+
+            // Fallback for legacy TCP packets: "DOWN key1 key2", "UP key1", "HIT key1"
+            val words = trimmed.split("\\s+".toRegex())
+            if (words.isNotEmpty()) {
+                val actionStr = words[0]
+                val action = when (actionStr) {
+                    "DOWN" -> RemoteAction.DOWN
+                    "UP" -> RemoteAction.UP
+                    "HIT" -> RemoteAction.HIT
+                    else -> return null
+                }
+                val keys = words.drop(1)
+                return RemoteEvent(0L, 0L, action, keys)
+            }
+            return null
+        }
+    }
+}
+
 /**
  * 送信側（太鼓側）から受信側（ゲーム側）Androidへキー入力を送るクライアント
  * UDP 超低遅延・状態同期 (State-Based Sync) + 冗長送信 (Redundant Transmission) + TCPバックアップ
@@ -146,6 +221,9 @@ class TaikoAndroidRemoteSender {
     private var udpSendExecutor = Executors.newSingleThreadExecutor()
     private var tcpSendExecutor = Executors.newSingleThreadExecutor()
     private val seqNumber = AtomicLong(1)
+    private var sessionId: Long = kotlin.math.abs(java.security.SecureRandom().nextLong()).let { if (it == 0L) 1L else it }
+
+    var transportMode: String = "hybrid" // "hybrid", "udp_only", "tcp_only"
 
     @Volatile private var isConnected = false
     private val currentlyPressedKeys = Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
@@ -450,12 +528,18 @@ class TaikoAndroidRemoteSender {
         synchronized(socketLock) {
             socket = s
             writer = BufferedWriter(OutputStreamWriter(out, "UTF-8"))
+            sessionId = kotlin.math.abs(java.security.SecureRandom().nextLong()).let { if (it == 0L) 1L else it }
+            seqNumber.set(1)
             isConnected = true
         }
 
         _statusState.value = "connected"
         listener?.onConnected()
         TaikoLogManager.log("受信側 (ゲーム) に接続完了！ ($host:$port)")
+
+        // Send initial handshake state event
+        val initialEvent = RemoteEvent(sessionId, 0L, RemoteAction.STATE, emptyList(), currentlyPressedKeys.toList())
+        dispatchRemoteEvent(initialEvent, redundantUdp = false)
 
         // 3. Start Heartbeat / State Sync loop
         startHeartbeatThread()
@@ -497,11 +581,20 @@ class TaikoAndroidRemoteSender {
                                 writer?.write("PING\n")
                                 writer?.flush()
                             } catch (e: Exception) {
-                                Log.d("TaikoRemoteSender", "TCP keepalive ping note: ${e.message}")
+                                Log.w("TaikoRemoteSender", "TCP keepalive ping failed: ${e.message}")
+                                onUnexpectedDisconnect()
+                                return@Thread
                             }
                         }
                     }
-                    sendUdpStateSyncPacket("STATE", emptyList())
+                    val stateEvent = RemoteEvent(
+                        sessionId = sessionId,
+                        eventId = seqNumber.getAndIncrement(),
+                        action = RemoteAction.STATE,
+                        keys = emptyList(),
+                        allHeldKeys = currentlyPressedKeys.toList()
+                    )
+                    dispatchRemoteEvent(stateEvent, redundantUdp = false)
                 }
             } catch (_: InterruptedException) {
             } catch (e: Exception) {
@@ -515,6 +608,27 @@ class TaikoAndroidRemoteSender {
 
     fun sendKeyEvent(partOrKey: String, isPressed: Boolean) {
         sendMultiKeyEvents(listOf(partOrKey), isPressed)
+    }
+
+    fun sendHitEvent(keys: List<String>) {
+        if (keys.isEmpty()) return
+
+        // Direct USB AOA Hardware Pipeline
+        if (TaikoUsbDirectManager.sendKeys(keys, true)) {
+            TaikoUsbDirectManager.sendKeys(keys, false)
+            return
+        }
+
+        if (!isConnected) return
+
+        val event = RemoteEvent(
+            sessionId = sessionId,
+            eventId = seqNumber.getAndIncrement(),
+            action = RemoteAction.HIT,
+            keys = keys,
+            allHeldKeys = currentlyPressedKeys.toList()
+        )
+        dispatchRemoteEvent(event, redundantUdp = true)
     }
 
     fun sendMultiKeyEvents(keys: List<String>, isPressed: Boolean) {
@@ -534,60 +648,71 @@ class TaikoAndroidRemoteSender {
 
         if (!isConnected) return
 
-        val action = if (isPressed) "DOWN" else "UP"
+        val action = if (isPressed) RemoteAction.DOWN else RemoteAction.UP
 
-        // 3. Ultra-fast Zero-Queue Direct UDP Transmission with Redundant Triple-Burst Packets (0ms delay)
-        sendUdpStateSyncPacket(action, keys, redundantSend = true)
+        val event = RemoteEvent(
+            sessionId = sessionId,
+            eventId = seqNumber.getAndIncrement(),
+            action = action,
+            keys = keys,
+            allHeldKeys = currentlyPressedKeys.toList()
+        )
+        dispatchRemoteEvent(event, redundantUdp = true)
+
         if (!isPressed) {
-            sendUdpStateSyncPacket("STATE", emptyList(), redundantSend = true)
+            val stateEvent = RemoteEvent(
+                sessionId = sessionId,
+                eventId = seqNumber.getAndIncrement(),
+                action = RemoteAction.STATE,
+                keys = emptyList(),
+                allHeldKeys = currentlyPressedKeys.toList()
+            )
+            dispatchRemoteEvent(stateEvent, redundantUdp = false)
         }
-
-        // 4. Guaranteed Concurrent TCP Fast-Stream Pipeline (ensures 100% transmission even when OS blocks/drops UDP)
-        sendTcpEvent(action, keys)
     }
 
-    private fun sendTcpEvent(action: String, keys: List<String>) {
-        val line = "$action ${keys.joinToString(" ")}\n"
-        if (tcpSendExecutor.isShutdown || tcpSendExecutor.isTerminated) {
-            tcpSendExecutor = Executors.newSingleThreadExecutor()
-        }
-        tcpSendExecutor.execute {
-            synchronized(socketLock) {
-                try {
-                    writer?.write(line)
-                    writer?.flush()
-                } catch (e: Exception) {
-                    Log.d("TaikoRemoteSender", "TCP key send error: ${e.message}")
+    private fun dispatchRemoteEvent(event: RemoteEvent, redundantUdp: Boolean = false) {
+        val payload = event.serialize()
+
+        // 1. Ultra-fast Zero-Queue Direct UDP Transmission (if hybrid or udp_only)
+        if (transportMode != "tcp_only") {
+            val udp = udpSocket
+            val addr = udpTargetAddress
+            if (udp != null && addr != null) {
+                val bytes = payload.toByteArray(Charsets.UTF_8)
+                if (udpSendExecutor.isShutdown || udpSendExecutor.isTerminated) {
+                    udpSendExecutor = Executors.newSingleThreadExecutor()
+                }
+                udpSendExecutor.execute {
+                    try {
+                        val packet = DatagramPacket(bytes, bytes.size, addr, udpTargetPort)
+                        udp.send(packet)
+                        if (redundantUdp) {
+                            udp.send(packet)
+                            udp.send(packet)
+                        }
+                    } catch (e: Exception) {
+                        Log.d("TaikoRemoteSender", "UDP send error: ${e.message}")
+                    }
                 }
             }
         }
-    }
 
-    private fun sendUdpStateSyncPacket(action: String, eventKeys: List<String>, redundantSend: Boolean = false) {
-        val udp = udpSocket ?: return
-        val addr = udpTargetAddress ?: return
-
-        val seq = seqNumber.getAndIncrement()
-        val eventKeysCsv = eventKeys.joinToString(",")
-        val allKeysCsv = currentlyPressedKeys.joinToString(",")
-        val payloadStr = "$seq|$action|$eventKeysCsv|$allKeysCsv"
-        val bytes = payloadStr.toByteArray(Charsets.UTF_8)
-
-        if (udpSendExecutor.isShutdown || udpSendExecutor.isTerminated) {
-            udpSendExecutor = Executors.newSingleThreadExecutor()
-        }
-
-        udpSendExecutor.execute {
-            try {
-                val packet = DatagramPacket(bytes, bytes.size, addr, udpTargetPort)
-                udp.send(packet)
-
-                if (redundantSend) {
-                    udp.send(packet)
-                    udp.send(packet)
+        // 2. Guaranteed Concurrent TCP Fast-Stream Pipeline (if hybrid or tcp_only)
+        if (transportMode != "udp_only") {
+            if (tcpSendExecutor.isShutdown || tcpSendExecutor.isTerminated) {
+                tcpSendExecutor = Executors.newSingleThreadExecutor()
+            }
+            tcpSendExecutor.execute {
+                synchronized(socketLock) {
+                    try {
+                        writer?.write(payload + "\n")
+                        writer?.flush()
+                    } catch (e: Exception) {
+                        Log.e("TaikoRemoteSender", "TCP key send error: ${e.message}")
+                        onUnexpectedDisconnect()
+                    }
                 }
-            } catch (e: Exception) {
-                Log.d("TaikoRemoteSender", "UDP send error: ${e.message}")
             }
         }
     }
@@ -675,13 +800,72 @@ class TaikoAndroidRemoteReceiver(
 
     @Volatile private var isRunning = false
     private val activePressedKeysOnReceiver = ConcurrentHashMap.newKeySet<String>()
-    private val processedSeqSet = java.util.Collections.newSetFromMap(ConcurrentHashMap<Long, Boolean>())
-    private val processedSeqQueue = java.util.concurrent.ConcurrentLinkedQueue<Long>()
+
+    data class EventKey(val sessionId: Long, val eventId: Long)
+    private val processedEvents = ConcurrentHashMap<EventKey, Boolean>()
+    private val processedOrder = java.util.concurrent.ConcurrentLinkedQueue<EventKey>()
+    private val maxDedupEntries = 2048
 
     private val _activeClientsState = MutableStateFlow(0)
     val activeClientsState: StateFlow<Int> = _activeClientsState
 
     private var onClientCountChanged: ((Int) -> Unit)? = null
+
+    private fun acceptEvent(event: RemoteEvent): Boolean {
+        if (event.eventId <= 0L) return true
+        val key = EventKey(event.sessionId, event.eventId)
+        if (processedEvents.putIfAbsent(key, true) != null) {
+            return false // Duplicate already processed across UDP or TCP!
+        }
+        processedOrder.add(key)
+        while (processedOrder.size > maxDedupEntries) {
+            processedOrder.poll()?.let { processedEvents.remove(it) }
+        }
+        return true
+    }
+
+    private fun dispatchRemoteEvent(event: RemoteEvent) {
+        if (!acceptEvent(event)) {
+            return
+        }
+        keyDispatchExecutor.execute {
+            try {
+                when (event.action) {
+                    RemoteAction.HIT -> {
+                        if (event.keys.isNotEmpty()) {
+                            onKeyEventsReceived(event.keys, true)
+                            try {
+                                Thread.sleep(25)
+                            } catch (_: InterruptedException) {}
+                            onKeyEventsReceived(event.keys, false)
+                        }
+                    }
+                    RemoteAction.DOWN -> {
+                        if (event.keys.isNotEmpty()) {
+                            onKeyEventsReceived(event.keys, true)
+                            activePressedKeysOnReceiver.addAll(event.keys)
+                        }
+                    }
+                    RemoteAction.UP -> {
+                        if (event.keys.isNotEmpty()) {
+                            onKeyEventsReceived(event.keys, false)
+                            activePressedKeysOnReceiver.removeAll(event.keys.toSet())
+                        }
+                    }
+                    RemoteAction.STATE -> {
+                        val expectedPressedKeys = event.allHeldKeys.toSet()
+                        val stuckPressed = activePressedKeysOnReceiver - expectedPressedKeys
+                        if (stuckPressed.isNotEmpty()) {
+                            onKeyEventsReceived(stuckPressed.toList(), false)
+                            activePressedKeysOnReceiver.removeAll(stuckPressed)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("TaikoRemoteReceiver", "Error dispatching remote event", e)
+            }
+        }
+    }
 
     private fun createAndBindDatagramSocket(udpPort: Int, maxRetries: Int = 10, delayMs: Long = 200): DatagramSocket? {
         var lastErr: Exception? = null
@@ -770,55 +954,10 @@ class TaikoAndroidRemoteReceiver(
                     val packet = DatagramPacket(buffer, buffer.size)
                     socket.receive(packet)
 
-                    val payload = String(packet.data, 0, packet.length, Charsets.UTF_8)
-                    val parts = payload.split("|")
-                    if (parts.size >= 4) {
-                        val seq = parts[0].toLongOrNull() ?: 0L
-                        val action = parts[1] // "DOWN", "UP", or "STATE"
-                        val eventKeysCsv = parts[2]
-                        val allKeysCsv = parts[3]
-
-                        // Deduplicate exact redundant packet copies without dropping out-of-order packets
-                        if (seq > 0) {
-                            if (processedSeqSet.contains(seq)) {
-                                continue
-                            }
-                            processedSeqSet.add(seq)
-                            processedSeqQueue.add(seq)
-                            while (processedSeqQueue.size > 200) {
-                                val oldSeq = processedSeqQueue.poll()
-                                if (oldSeq != null) processedSeqSet.remove(oldSeq)
-                            }
-                        }
-
-                        val eventKeys = eventKeysCsv.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-                        val expectedPressedKeys = allKeysCsv.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
-
-                        keyDispatchExecutor.execute {
-                            try {
-                                if (action == "STATE") {
-                                    // Periodic State Sync: safely clean up any stuck keys or catch lost releases
-                                    val stuckPressed = activePressedKeysOnReceiver - expectedPressedKeys
-                                    if (stuckPressed.isNotEmpty()) {
-                                        onKeyEventsReceived(stuckPressed.toList(), false)
-                                        activePressedKeysOnReceiver.removeAll(stuckPressed)
-                                    }
-                                } else {
-                                    // Explicit Key Event (DOWN / UP): Clean, zero-duplicate, single dispatch
-                                    if (eventKeys.isNotEmpty()) {
-                                        val isPressed = action.equals("DOWN", ignoreCase = true)
-                                        onKeyEventsReceived(eventKeys, isPressed)
-                                        if (isPressed) {
-                                            activePressedKeysOnReceiver.addAll(eventKeys)
-                                        } else {
-                                            activePressedKeysOnReceiver.removeAll(eventKeys.toSet())
-                                        }
-                                    }
-                                }
-                            } catch (e: Exception) {
-                                Log.e("TaikoRemoteReceiver", "Error dispatching UDP key event", e)
-                            }
-                        }
+                    val payload = String(packet.data, 0, packet.length, Charsets.UTF_8).trim()
+                    val event = RemoteEvent.parse(payload)
+                    if (event != null) {
+                        dispatchRemoteEvent(event)
                     }
                 }
             } catch (e: Exception) {
@@ -896,25 +1035,9 @@ class TaikoAndroidRemoteReceiver(
                 val trimmed = line.trim()
                 if (trimmed.isEmpty() || trimmed == "PING") continue
 
-                val parts = trimmed.split("\\s+".toRegex())
-                if (parts.size >= 2) {
-                    val action = parts[0] // "DOWN" or "UP"
-                    val isPressed = action.equals("DOWN", ignoreCase = true)
-                    val keys = parts.subList(1, parts.size)
-                    if (keys.isNotEmpty()) {
-                        keyDispatchExecutor.execute {
-                            try {
-                                onKeyEventsReceived(keys, isPressed)
-                                if (isPressed) {
-                                    activePressedKeysOnReceiver.addAll(keys)
-                                } else {
-                                    activePressedKeysOnReceiver.removeAll(keys.toSet())
-                                }
-                            } catch (e: Exception) {
-                                Log.e("TaikoRemoteReceiver", "Error dispatching TCP key event", e)
-                            }
-                        }
-                    }
+                val event = RemoteEvent.parse(trimmed)
+                if (event != null) {
+                    dispatchRemoteEvent(event)
                 }
             }
         } catch (e: Exception) {
@@ -933,6 +1056,13 @@ class TaikoAndroidRemoteReceiver(
 
     fun stop() {
         isRunning = false
+        processedEvents.clear()
+        processedOrder.clear()
+        if (activePressedKeysOnReceiver.isNotEmpty()) {
+            val stuck = activePressedKeysOnReceiver.toList()
+            onKeyEventsReceived(stuck, false)
+            activePressedKeysOnReceiver.clear()
+        }
         try {
             serverSocket?.close()
         } catch (_: Exception) {}

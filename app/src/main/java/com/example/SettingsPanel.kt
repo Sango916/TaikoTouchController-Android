@@ -38,6 +38,47 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 @Composable
+private fun Text(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = Color.Unspecified,
+    fontSize: androidx.compose.ui.unit.TextUnit = androidx.compose.ui.unit.TextUnit.Unspecified,
+    fontStyle: androidx.compose.ui.text.font.FontStyle? = null,
+    fontWeight: FontWeight? = null,
+    fontFamily: androidx.compose.ui.text.font.FontFamily? = null,
+    letterSpacing: androidx.compose.ui.unit.TextUnit = androidx.compose.ui.unit.TextUnit.Unspecified,
+    textDecoration: androidx.compose.ui.text.style.TextDecoration? = null,
+    textAlign: TextAlign? = null,
+    lineHeight: androidx.compose.ui.unit.TextUnit = androidx.compose.ui.unit.TextUnit.Unspecified,
+    overflow: TextOverflow = TextOverflow.Clip,
+    softWrap: Boolean = true,
+    maxLines: Int = Int.MAX_VALUE,
+    minLines: Int = 1,
+    onTextLayout: (androidx.compose.ui.text.TextLayoutResult) -> Unit = {},
+    style: androidx.compose.ui.text.TextStyle = LocalTextStyle.current
+) {
+    androidx.compose.material3.Text(
+        text = text.t(),
+        modifier = modifier,
+        color = color,
+        fontSize = fontSize,
+        fontStyle = fontStyle,
+        fontWeight = fontWeight,
+        fontFamily = fontFamily,
+        letterSpacing = letterSpacing,
+        textDecoration = textDecoration,
+        textAlign = textAlign,
+        lineHeight = lineHeight,
+        overflow = overflow,
+        softWrap = softWrap,
+        maxLines = maxLines,
+        minLines = minLines,
+        onTextLayout = onTextLayout,
+        style = style
+    )
+}
+
+@Composable
 fun SettingsPanel(
     settings: ControllerSettings,
     onSettingsChanged: (ControllerSettings) -> Unit,
@@ -922,6 +963,81 @@ fun SettingsPanel(
                                 )
                             }
 
+                            // Protocol Transport Mode Selector
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = tr("📶 Wi-Fi 送信プロトコル方式:", "📶 Wi-Fi Transport Mode:"),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF78350F).invertIfDark(isDark)
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    val modes = listOf(
+                                        "hybrid" to tr("⚡ ハイブリッド", "⚡ Hybrid"),
+                                        "udp_only" to tr("🚀 UDP専用", "🚀 UDP Only"),
+                                        "tcp_only" to tr("🛡️ TCP専用", "🛡️ TCP Only")
+                                    )
+                                    modes.forEach { (modeVal, label) ->
+                                        val isSel = settings.wifiTransportMode == modeVal
+                                        Button(
+                                            onClick = { onSettingsChanged(settings.copy(wifiTransportMode = modeVal)) },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = if (isSel) Color(0xFF78350F).invertIfDark(isDark) else Color(0xFFEADCC9).invertIfDark(isDark),
+                                                contentColor = if (isSel) Color.White else Color(0xFF78350F).invertIfDark(isDark)
+                                            ),
+                                            shape = RoundedCornerShape(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text(text = label, fontSize = 9.5.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Tap Send Mode Selector
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = tr("🥁 打鍵送信モデル:", "🥁 Key Event Model:"),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF78350F).invertIfDark(isDark)
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    val tapModes = listOf(
+                                        "hit" to tr("🥁 HIT型 (単発パルス/太鼓推奨)", "🥁 HIT Pulse (Recommended)"),
+                                        "down_up" to tr("⏱️ 長押し型 (DOWN/UP)", "⏱️ Hold Type (DOWN/UP)")
+                                    )
+                                    tapModes.forEach { (modeVal, label) ->
+                                        val isSel = settings.tapSendMode == modeVal
+                                        Button(
+                                            onClick = { onSettingsChanged(settings.copy(tapSendMode = modeVal)) },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = if (isSel) Color(0xFF78350F).invertIfDark(isDark) else Color(0xFFEADCC9).invertIfDark(isDark),
+                                                contentColor = if (isSel) Color.White else Color(0xFF78350F).invertIfDark(isDark)
+                                            ),
+                                            shape = RoundedCornerShape(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text(text = label, fontSize = 9.5.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+
                             // Wireless Speedup Tip Card
                             Card(
                                 shape = RoundedCornerShape(8.dp),
@@ -1418,7 +1534,7 @@ fun SettingsPanel(
                             )
                             Icon(
                                 imageVector = if (showManualScriptCopy) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                contentDescription = if (showManualScriptCopy) "閉じる" else "展開する",
+                                contentDescription = if (showManualScriptCopy) tr("閉じる", "Close") else tr("展開する", "Expand"),
                                 modifier = Modifier.size(16.dp)
                             )
                         }
